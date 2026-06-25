@@ -32,6 +32,7 @@ type FormState = {
   title: string;
   description: string;
   category: string;
+  subcategory: string;
   brand: string;
   size: string;
   condition: string;
@@ -55,7 +56,8 @@ const initialForm: FormState = {
   previewUrls: [],
   title: "",
   description: "",
-  category: "",
+  category: "Vêtements",
+  subcategory: "",
   brand: "",
   size: "",
   condition: "Bon état",
@@ -77,6 +79,131 @@ const conditions = [
   "Très bon état",
   "Bon état",
   "Satisfaisant",
+];
+
+const categoryTree = {
+  Vêtements: [
+    "Manteaux et vestes",
+    "Pulls et gilets",
+    "Sweats",
+    "Chemises et blouses",
+    "T-shirts et tops",
+    "Robes",
+    "Jupes",
+    "Pantalons",
+    "Jeans",
+    "Shorts",
+    "Ensembles",
+    "Sous-vêtements",
+    "Pyjamas",
+    "Sport",
+    "Maillots de bain",
+  ],
+  Chaussures: [
+    "Baskets",
+    "Bottes et bottines",
+    "Sandales",
+    "Escarpins",
+    "Mocassins",
+    "Chaussures de ville",
+    "Chaussures de sport",
+  ],
+  Accessoires: [
+    "Sacs",
+    "Ceintures",
+    "Chapeaux et bonnets",
+    "Écharpes et foulards",
+    "Bijoux",
+    "Lunettes",
+    "Accessoires cheveux",
+  ],
+  "Bébé et enfant": [
+    "Bodies",
+    "Pyjamas",
+    "Hauts",
+    "Bas",
+    "Robes et ensembles",
+    "Manteaux",
+    "Chaussures enfant",
+    "Accessoires enfant",
+  ],
+} as const;
+
+const categories = Object.keys(categoryTree) as Array<keyof typeof categoryTree>;
+const genders = ["Femme", "Homme", "Enfant", "Bébé", "Unisexe"];
+const sizes = [
+  "XXS",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "3XL",
+  "34",
+  "36",
+  "38",
+  "40",
+  "42",
+  "44",
+  "46",
+  "48",
+  "50",
+  "Naissance",
+  "1 mois",
+  "3 mois",
+  "6 mois",
+  "9 mois",
+  "12 mois",
+  "18 mois",
+  "2 ans",
+  "3 ans",
+  "4 ans",
+  "5 ans",
+  "6 ans",
+  "8 ans",
+  "10 ans",
+  "12 ans",
+  "14 ans",
+  "16 ans",
+  "Pointure 20-24",
+  "Pointure 25-29",
+  "Pointure 30-34",
+  "Pointure 35-39",
+  "Pointure 40-44",
+  "Pointure 45+",
+  "Unique",
+];
+const colors = [
+  "Noir",
+  "Blanc",
+  "Beige",
+  "Gris",
+  "Bleu",
+  "Marine",
+  "Rouge",
+  "Rose",
+  "Vert",
+  "Jaune",
+  "Orange",
+  "Violet",
+  "Marron",
+  "Multicolore",
+];
+const materials = [
+  "Coton",
+  "Lin",
+  "Laine",
+  "Cachemire",
+  "Soie",
+  "Cuir",
+  "Daim",
+  "Denim",
+  "Polyester",
+  "Viscose",
+  "Élasthanne",
+  "Synthétique",
+  "Mélange",
 ];
 
 const processColumns: Array<{ status: KlydeStatus; label: string }> = [
@@ -167,6 +294,10 @@ function AppContent() {
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("all");
+  const [genderFilter, setGenderFilter] = useState("all");
+  const [sizeFilter, setSizeFilter] = useState("all");
   const [extraDetails, setExtraDetails] = useState("");
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
   const [dropTarget, setDropTarget] = useState<KlydeStatus | null>(null);
@@ -182,7 +313,22 @@ function AppContent() {
   const removeItem = useMutation(api.klyde.remove);
   const items = useQuery(api.klyde.list, { searchText: searchText || undefined });
 
-  const visibleItems = items ?? [];
+  const allItems = items ?? [];
+  const visibleItems = useMemo(
+    () =>
+      allItems.filter((item) => {
+        if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
+        if (subcategoryFilter !== "all" && item.subcategory !== subcategoryFilter) return false;
+        if (genderFilter !== "all" && item.gender !== genderFilter) return false;
+        if (sizeFilter !== "all" && item.size !== sizeFilter) return false;
+        return true;
+      }),
+    [allItems, categoryFilter, genderFilter, sizeFilter, subcategoryFilter],
+  );
+  const availableSubcategories =
+    categoryFilter !== "all" && categoryFilter in categoryTree
+      ? categoryTree[categoryFilter as keyof typeof categoryTree]
+      : Array.from(new Set(categories.flatMap((category) => categoryTree[category])));
   const processItems = useMemo(
     () => visibleItems.filter((item) => processColumns.some((column) => column.status === itemStatus(item))),
     [visibleItems],
@@ -217,6 +363,7 @@ function AppContent() {
       title: item.title,
       description: item.description,
       category: item.category,
+      subcategory: item.subcategory ?? "",
       brand: item.brand ?? "",
       size: item.size ?? "",
       condition: item.condition,
@@ -342,6 +489,7 @@ function AppContent() {
         title: result.title ?? current.title,
         description: result.description ?? current.description,
         category: result.category ?? current.category,
+        subcategory: result.subcategory ?? current.subcategory,
         brand: result.brand ?? "",
         size: result.size ?? "",
         condition: result.condition ?? current.condition,
@@ -375,6 +523,7 @@ function AppContent() {
         title: form.title,
         description: form.description,
         category: form.category,
+        subcategory: form.subcategory || undefined,
         brand: form.brand || undefined,
         size: form.size || undefined,
         condition: form.condition,
@@ -402,6 +551,11 @@ function AppContent() {
       setBusy(null);
     }
   }
+
+  const formSubcategories =
+    form.category in categoryTree
+      ? categoryTree[form.category as keyof typeof categoryTree]
+      : [];
 
   const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => (
     <button
@@ -485,7 +639,7 @@ function AppContent() {
           {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
         </div>
         <div className="text-xs text-[var(--muted-foreground)]">
-          {[item.category, item.color].filter(Boolean).join(" · ")}
+          {[item.gender, item.category, item.subcategory, item.color].filter(Boolean).join(" · ")}
         </div>
         <div className="flex items-center justify-between pt-1 text-xs text-[var(--muted-foreground)]">
           <span>Stock x{item.quantity}</span>
@@ -515,7 +669,9 @@ function AppContent() {
           </span>
         </div>
         <div className="mt-1 text-sm text-[var(--muted-foreground)]">
-          {[item.brand, item.size, item.category, item.condition].filter(Boolean).join(" · ")}
+          {[item.brand, item.gender, item.size, item.category, item.subcategory, item.condition]
+            .filter(Boolean)
+            .join(" · ")}
         </div>
         <div className="mt-1 text-sm text-[var(--muted-foreground)]">
           {item.sku ? `Réf. ${item.sku}` : "Sans référence"}
@@ -556,7 +712,7 @@ function AppContent() {
           </span>
         </div>
         <div className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
-          {[item.brand, item.size].filter(Boolean).join(" · ") || item.category}
+          {[item.brand, item.gender, item.size].filter(Boolean).join(" · ") || item.subcategory || item.category}
         </div>
         <div className="mt-2">
           <button
@@ -636,23 +792,76 @@ function AppContent() {
             </div>
 
             {activeTab === "stock" ? (
-              <div className="inline-flex w-fit rounded-md border border-[var(--border)] p-1">
-                <button
-                  type="button"
-                  onClick={() => setStockMode("cards")}
-                  className={cn("rounded px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
-                  aria-label="Mode cards"
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => {
+                    setCategoryFilter(event.target.value);
+                    setSubcategoryFilter("all");
+                  }}
+                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                 >
-                  <LayoutGrid className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStockMode("list")}
-                  className={cn("rounded px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
-                  aria-label="Mode liste"
+                  <option value="all">Toutes catégories</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={subcategoryFilter}
+                  onChange={(event) => setSubcategoryFilter(event.target.value)}
+                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                 >
-                  <List className="h-4 w-4" />
-                </button>
+                  <option value="all">Toutes sous-catégories</option>
+                  {availableSubcategories.map((subcategory) => (
+                    <option key={subcategory} value={subcategory}>
+                      {subcategory}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={genderFilter}
+                  onChange={(event) => setGenderFilter(event.target.value)}
+                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+                >
+                  <option value="all">Tous genres</option>
+                  {genders.map((gender) => (
+                    <option key={gender} value={gender}>
+                      {gender}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={sizeFilter}
+                  onChange={(event) => setSizeFilter(event.target.value)}
+                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+                >
+                  <option value="all">Toutes tailles</option>
+                  {sizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <div className="inline-flex rounded-md border border-[var(--border)] p-1">
+                  <button
+                    type="button"
+                    onClick={() => setStockMode("cards")}
+                    className={cn("rounded px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
+                    aria-label="Mode cards"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStockMode("list")}
+                    className={cn("rounded px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
+                    aria-label="Mode liste"
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="inline-flex w-fit rounded-md border border-[var(--border)] p-1">
@@ -814,7 +1023,9 @@ function AppContent() {
                     ["Marque", detailItem.brand ?? "-"],
                     ["Taille", detailItem.size ?? "-"],
                     ["État", detailItem.condition],
+                    ["Genre", detailItem.gender ?? "-"],
                     ["Catégorie", detailItem.category],
+                    ["Sous-catégorie", detailItem.subcategory ?? "-"],
                     ["Couleur", detailItem.color ?? "-"],
                     ["Matière", detailItem.material ?? "-"],
                     ["Référence", detailItem.sku ?? "-"],
@@ -1001,13 +1212,48 @@ function AppContent() {
                   />
                 </Field>
                 <Field label="Catégorie">
-                  <input className={inputClass()} value={form.category} onChange={(event) => update("category", event.target.value)} required />
+                  <select
+                    className={inputClass()}
+                    value={form.category}
+                    onChange={(event) => {
+                      update("category", event.target.value);
+                      update("subcategory", "");
+                    }}
+                    required
+                  >
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Sous-catégorie">
+                  <select
+                    className={inputClass()}
+                    value={form.subcategory}
+                    onChange={(event) => update("subcategory", event.target.value)}
+                  >
+                    <option value="">À préciser</option>
+                    {formSubcategories.map((subcategory) => (
+                      <option key={subcategory} value={subcategory}>
+                        {subcategory}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Marque">
                   <input className={inputClass()} value={form.brand} onChange={(event) => update("brand", event.target.value)} />
                 </Field>
                 <Field label="Taille">
-                  <input className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)} />
+                  <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
+                    <option value="">À préciser</option>
+                    {sizes.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="État">
                   <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
@@ -1017,10 +1263,24 @@ function AppContent() {
                   </select>
                 </Field>
                 <Field label="Couleur">
-                  <input className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)} />
+                  <select className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)}>
+                    <option value="">À préciser</option>
+                    {colors.map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Matière">
-                  <input className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)} />
+                  <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                    <option value="">À préciser</option>
+                    {materials.map((material) => (
+                      <option key={material} value={material}>
+                        {material}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Prix">
                   <input className={inputClass()} inputMode="decimal" value={form.price} onChange={(event) => update("price", event.target.value)} />
@@ -1033,7 +1293,14 @@ function AppContent() {
                   </select>
                 </Field>
                 <Field label="Genre">
-                  <input className={inputClass()} value={form.gender} onChange={(event) => update("gender", event.target.value)} />
+                  <select className={inputClass()} value={form.gender} onChange={(event) => update("gender", event.target.value)}>
+                    <option value="">À préciser</option>
+                    {genders.map((gender) => (
+                      <option key={gender} value={gender}>
+                        {gender}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Style">
                   <input className={inputClass()} value={form.style} onChange={(event) => update("style", event.target.value)} />

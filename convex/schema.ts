@@ -902,6 +902,7 @@ export default defineSchema({
     title: v.string(),
     description: v.string(),
     category: v.string(),
+    subcategory: v.optional(v.string()),
     brand: v.optional(v.string()),
     size: v.optional(v.string()),
     condition: v.string(),

@@ -12,6 +12,56 @@ const CONDITIONS = [
 
 const PARCEL_SIZES = ["Petit", "Moyen", "Grand"] as const;
 
+const CATEGORIES = {
+  Vêtements: [
+    "Manteaux et vestes",
+    "Pulls et gilets",
+    "Sweats",
+    "Chemises et blouses",
+    "T-shirts et tops",
+    "Robes",
+    "Jupes",
+    "Pantalons",
+    "Jeans",
+    "Shorts",
+    "Ensembles",
+    "Sous-vêtements",
+    "Pyjamas",
+    "Sport",
+    "Maillots de bain",
+  ],
+  Chaussures: [
+    "Baskets",
+    "Bottes et bottines",
+    "Sandales",
+    "Escarpins",
+    "Mocassins",
+    "Chaussures de ville",
+    "Chaussures de sport",
+  ],
+  Accessoires: [
+    "Sacs",
+    "Ceintures",
+    "Chapeaux et bonnets",
+    "Écharpes et foulards",
+    "Bijoux",
+    "Lunettes",
+    "Accessoires cheveux",
+  ],
+  "Bébé et enfant": [
+    "Bodies",
+    "Pyjamas",
+    "Hauts",
+    "Bas",
+    "Robes et ensembles",
+    "Manteaux",
+    "Chaussures enfant",
+    "Accessoires enfant",
+  ],
+} as const;
+
+const GENDERS = ["Femme", "Homme", "Enfant", "Bébé", "Unisexe"] as const;
+
 const itemStatus = v.union(
   v.literal("stock"),
   v.literal("en_ligne"),
@@ -25,6 +75,7 @@ type KlydeAIResult = {
   title: string;
   description: string;
   category: string;
+  subcategory?: string | null;
   brand?: string | null;
   size?: string | null;
   condition: string;
@@ -76,13 +127,24 @@ function sanitizeAnalysis(result: KlydeAIResult): KlydeAIResult {
   const parcelSize = PARCEL_SIZES.includes(result.parcelSize as (typeof PARCEL_SIZES)[number])
     ? result.parcelSize
     : undefined;
+  const category = Object.keys(CATEGORIES).includes(result.category)
+    ? result.category
+    : "Vêtements";
+  const subcategories = CATEGORIES[category as keyof typeof CATEGORIES] as readonly string[];
+  const subcategory = subcategories.includes(result.subcategory ?? "")
+    ? result.subcategory
+    : undefined;
+  const gender = GENDERS.includes(result.gender as (typeof GENDERS)[number])
+    ? result.gender
+    : undefined;
 
   return {
     title: cleanOptional(result.title)?.slice(0, 80) || "Article textile",
     description:
       cleanOptional(result.description)?.slice(0, 1200) ||
       "Article textile d'occasion. Détails à vérifier avant publication.",
-    category: cleanOptional(result.category) || "Vêtements",
+    category,
+    subcategory,
     brand: cleanOptional(result.brand),
     size: cleanOptional(result.size),
     condition,
@@ -90,7 +152,7 @@ function sanitizeAnalysis(result: KlydeAIResult): KlydeAIResult {
     material: cleanOptional(result.material),
     price: normalizePrice(result.price),
     parcelSize,
-    gender: cleanOptional(result.gender),
+    gender,
     style: cleanOptional(result.style),
     aiConfidence:
       result.aiConfidence == null ? undefined : Math.max(0, Math.min(1, result.aiConfidence)),
@@ -148,6 +210,7 @@ export const list = query({
             item.title,
             item.description,
             item.category,
+            item.subcategory,
             item.brand,
             item.size,
             item.color,
@@ -172,6 +235,7 @@ export const create = mutation({
     title: v.string(),
     description: v.string(),
     category: v.string(),
+    subcategory: v.optional(v.string()),
     brand: v.optional(v.string()),
     size: v.optional(v.string()),
     condition: v.string(),
@@ -196,6 +260,7 @@ export const create = mutation({
       title: args.title.trim() || "Article textile",
       description: args.description.trim(),
       category: args.category.trim() || "Vêtements",
+      subcategory: cleanOptional(args.subcategory),
       brand: cleanOptional(args.brand),
       size: cleanOptional(args.size),
       condition: args.condition.trim() || "Bon état",
@@ -249,6 +314,7 @@ export const update = mutation({
     title: v.string(),
     description: v.string(),
     category: v.string(),
+    subcategory: v.optional(v.string()),
     brand: v.optional(v.string()),
     size: v.optional(v.string()),
     condition: v.string(),
@@ -272,6 +338,7 @@ export const update = mutation({
       title: args.title.trim() || "Article textile",
       description: args.description.trim(),
       category: args.category.trim() || "Vêtements",
+      subcategory: cleanOptional(args.subcategory),
       brand: cleanOptional(args.brand),
       size: cleanOptional(args.size),
       condition: args.condition.trim() || "Bon état",
@@ -317,25 +384,31 @@ export const analyzePhotos = action({
     const imageUrls = urls.filter((url): url is string => Boolean(url));
     if (imageUrls.length === 0) throw new Error("Photos introuvables dans le stockage Convex.");
 
-    const prompt = `Tu remplis une fiche Vinted pour un stock textile français.
-Analyse toutes les photos ensemble, y compris étiquettes, défauts, matières et coupe.
+    const prompt = `Tu remplis une fiche boutique pour un stock textile français.
+Analyse toutes les photos ensemble, y compris étiquettes, défauts, matières, coupe, public cible et type d'article.
 Retourne uniquement un JSON valide avec ces champs:
 {
-  "title": "titre Vinted clair, max 80 caractères",
+  "title": "titre boutique clair, max 80 caractères",
   "description": "description prête à publier, objective, mentionne l'état et les défauts visibles",
-  "category": "catégorie Vinted précise ex: Femmes > Robes, Hommes > Manteaux, Enfants > Hauts",
+  "category": "une de: Vêtements | Chaussures | Accessoires | Bébé et enfant",
+  "subcategory": "une sous-catégorie exacte de la catégorie choisie",
   "brand": "marque si visible ou null",
   "size": "taille si visible ou estimée prudemment, sinon null",
   "condition": "une de: Neuf avec étiquette | Neuf sans étiquette | Très bon état | Bon état | Satisfaisant",
   "color": "couleur principale, sinon null",
   "material": "matière si visible/probable, sinon null",
-  "price": prix conseille en euros pour Vinted, nombre ou null,
+  "price": prix conseillé en euros pour la boutique, nombre ou null,
   "parcelSize": "Petit | Moyen | Grand",
-  "gender": "Femmes | Hommes | Enfants | Bébé | Unisexe ou null",
+  "gender": "une de: Femme | Homme | Enfant | Bébé | Unisexe",
   "style": "style/mots utiles: vintage, casual, sport, chic... ou null",
   "aiConfidence": nombre entre 0 et 1,
   "aiNotes": "points à vérifier humainement"
 }
+Sous-catégories autorisées:
+- Vêtements: Manteaux et vestes, Pulls et gilets, Sweats, Chemises et blouses, T-shirts et tops, Robes, Jupes, Pantalons, Jeans, Shorts, Ensembles, Sous-vêtements, Pyjamas, Sport, Maillots de bain
+- Chaussures: Baskets, Bottes et bottines, Sandales, Escarpins, Mocassins, Chaussures de ville, Chaussures de sport
+- Accessoires: Sacs, Ceintures, Chapeaux et bonnets, Écharpes et foulards, Bijoux, Lunettes, Accessoires cheveux
+- Bébé et enfant: Bodies, Pyjamas, Hauts, Bas, Robes et ensembles, Manteaux, Chaussures enfant, Accessoires enfant
 Sois prudent: si marque, taille ou matière ne sont pas visibles, mets null.
 ${extraDetails?.trim() ? `Contexte fourni par l'utilisateur: ${extraDetails.trim()}` : ""}`;
 
