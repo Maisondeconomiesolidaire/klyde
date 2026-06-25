@@ -9,6 +9,7 @@ import {
   Loader2,
   Package,
   Pencil,
+  Scissors,
   Search,
   Sparkles,
   Trash2,
@@ -242,6 +243,37 @@ function statusLabel(status: string) {
   );
 }
 
+function revokeLocalPreview(url: string) {
+  if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
+function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Export PNG impossible."))),
+      "image/png",
+      0.95,
+    );
+  });
+}
+
+async function composeNeutralWhiteBackground(foregroundBlob: Blob) {
+  const image = await createImageBitmap(foregroundBlob);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas non disponible pour le détourage.");
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0);
+  image.close();
+
+  return canvasToPngBlob(canvas);
+}
+
 function Field({
   label,
   children,
@@ -385,6 +417,7 @@ function AppContent() {
   }
 
   function closeDrawer() {
+    form.previewUrls.forEach(revokeLocalPreview);
     setDrawerOpen(false);
     setEditingId(null);
     setForm(initialForm);
@@ -404,6 +437,7 @@ function AppContent() {
   }
 
   function removePhoto(index: number) {
+    revokeLocalPreview(form.previewUrls[index] ?? "");
     setForm((current) => ({
       ...current,
       photos: current.photos.filter((_, photoIndex) => photoIndex !== index),
@@ -467,6 +501,60 @@ function AppContent() {
       }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeBackgrounds() {
+    if (form.photos.length === 0) {
+      setError("Ajoute au moins une photo avant le détourage.");
+      return;
+    }
+
+    const currentPhotoIds = form.photos;
+    const currentPreviewUrls = form.previewUrls;
+
+    setError(null);
+    setBusy("background");
+    try {
+      const { removeBackground } = await import("@imgly/background-removal");
+      const processedIds: Id<"_storage">[] = [];
+      const processedUrls: string[] = [];
+
+      for (let index = 0; index < currentPreviewUrls.length; index += 1) {
+        const response = await fetch(currentPreviewUrls[index]);
+        if (!response.ok) {
+          throw new Error(`Photo ${index + 1} impossible à charger.`);
+        }
+
+        const sourceBlob = await response.blob();
+        const cutoutBlob = await removeBackground(sourceBlob, {
+          output: {
+            format: "image/png",
+            quality: 0.95,
+          },
+        });
+        const finalBlob = await composeNeutralWhiteBackground(cutoutBlob);
+        const file = new File([finalBlob], `klyde-detoure-${Date.now()}-${index + 1}.png`, {
+          type: "image/png",
+        });
+
+        processedIds.push(await upload(file));
+        processedUrls.push(URL.createObjectURL(finalBlob));
+      }
+
+      currentPreviewUrls.forEach(revokeLocalPreview);
+      setForm((current) => {
+        if (current.photos !== currentPhotoIds) return current;
+        return {
+          ...current,
+          photos: processedIds,
+          previewUrls: processedUrls,
+        };
+      });
+    } catch (err) {
+      setError(err instanceof Error ? `Détourage : ${err.message}` : "Erreur lors du détourage.");
     } finally {
       setBusy(null);
     }
@@ -1174,19 +1262,34 @@ function AppContent() {
                 placeholder="Précision optionnelle pour l’IA"
               />
 
-              <button
-                type="button"
-                onClick={() => void runAnalysis()}
-                disabled={busy === "analysis" || busy === "upload" || form.photos.length === 0}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {busy === "analysis" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Analyser les photos
-              </button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => void removeBackgrounds()}
+                  disabled={Boolean(busy) || form.photos.length === 0}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
+                >
+                  {busy === "background" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Scissors className="h-4 w-4" />
+                  )}
+                  Détourer sur fond blanc
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runAnalysis()}
+                  disabled={Boolean(busy) || form.photos.length === 0}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {busy === "analysis" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  Analyser les photos
+                </button>
+              </div>
 
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
