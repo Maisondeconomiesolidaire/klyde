@@ -1,0 +1,67 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #111111;
+  --logo: #000000;
+  --card: #ffffff;
+  --sidebar: #ffffff;
+  --sidebar-active: #f7f7f7;
+  --muted: #f5f5f5;
+  --muted-foreground: #666666;
+  --border: #e5e5e5;
+  --input: #ffffff;
+  --primary: #9d174d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #1f1f1f;
+    --foreground: #f5f5f5;
+    --logo: #ffffff;
+    --card: #2a2a2a;
+    --sidebar: #242424;
+    --sidebar-active: #303030;
+    --muted: #333333;
+    --muted-foreground: #b8b8b8;
+    --border: #3d3d3d;
+    --input: #262626;
+    --primary: #9d174d;
+  }
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
