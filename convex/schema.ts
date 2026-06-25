@@ -928,6 +928,7 @@ export default defineSchema({
     ),
     aiConfidence: v.optional(v.number()),
     aiNotes: v.optional(v.string()),
+    trackingNotes: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

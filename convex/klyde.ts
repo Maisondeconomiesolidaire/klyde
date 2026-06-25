@@ -228,6 +228,20 @@ export const updateStatus = mutation({
   },
 });
 
+export const updateTrackingNotes = mutation({
+  args: {
+    id: v.id("klydeItems"),
+    trackingNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, { id, trackingNotes }) => {
+    await requireSignedIn(ctx);
+    await ctx.db.patch(id, {
+      trackingNotes: cleanOptional(trackingNotes),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const update = mutation({
   args: {
     id: v.id("klydeItems"),

@@ -24,6 +24,7 @@ type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" 
 type AppTab = "stock" | "suivi";
 type StockMode = "cards" | "list";
 type TrackingTab = "process" | "gagne";
+type DetailMode = "article" | "demande";
 
 type FormState = {
   photos: Id<"_storage">[];
@@ -160,6 +161,10 @@ function AppContent() {
   const [trackingTab, setTrackingTab] = useState<TrackingTab>("process");
   const [form, setForm] = useState<FormState>(initialForm);
   const [editingId, setEditingId] = useState<Id<"klydeItems"> | null>(null);
+  const [detailItemId, setDetailItemId] = useState<Id<"klydeItems"> | null>(null);
+  const [detailMode, setDetailMode] = useState<DetailMode>("article");
+  const [deleteTarget, setDeleteTarget] = useState<ListedItem | null>(null);
+  const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [extraDetails, setExtraDetails] = useState("");
@@ -173,6 +178,7 @@ function AppContent() {
   const createItem = useMutation(api.klyde.create);
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
+  const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const removeItem = useMutation(api.klyde.remove);
   const items = useQuery(api.klyde.list, { searchText: searchText || undefined });
 
@@ -184,6 +190,10 @@ function AppContent() {
   const wonItems = useMemo(
     () => visibleItems.filter((item) => itemStatus(item) === "gagne"),
     [visibleItems],
+  );
+  const detailItem = useMemo(
+    () => visibleItems.find((item) => item._id === detailItemId) ?? null,
+    [detailItemId, visibleItems],
   );
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -199,6 +209,7 @@ function AppContent() {
   }
 
   function openEditArticle(item: ListedItem) {
+    setDetailItemId(null);
     setEditingId(item._id);
     setForm({
       photos: item.photos,
@@ -234,6 +245,17 @@ function AppContent() {
     setError(null);
   }
 
+  function openDetail(item: ListedItem, mode: DetailMode) {
+    setDetailItemId(item._id);
+    setDetailMode(mode);
+    setTrackingNoteDraft(item.trackingNotes ?? "");
+  }
+
+  function closeDetail() {
+    setDetailItemId(null);
+    setTrackingNoteDraft("");
+  }
+
   function removePhoto(index: number) {
     setForm((current) => ({
       ...current,
@@ -242,13 +264,33 @@ function AppContent() {
     }));
   }
 
-  async function deleteArticle(item: ListedItem) {
-    if (!window.confirm(`Supprimer définitivement “${item.title}” ?`)) return;
-    await removeItem({ id: item._id });
+  function requestDelete(item: ListedItem) {
+    setDeleteTarget(item);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const targetId = deleteTarget._id;
+    await removeItem({ id: targetId });
+    setDeleteTarget(null);
+    if (detailItemId === targetId) closeDetail();
   }
 
   async function moveItem(id: Id<"klydeItems">, status: KlydeStatus) {
     await updateStatus({ id, status });
+  }
+
+  async function saveTrackingNotes() {
+    if (!detailItem) return;
+    setBusy("notes");
+    try {
+      await updateTrackingNotes({
+        id: detailItem._id,
+        trackingNotes: trackingNoteDraft || undefined,
+      });
+    } finally {
+      setBusy(null);
+    }
   }
 
   function handleDrop(event: DragEvent, status: KlydeStatus) {
@@ -381,7 +423,10 @@ function AppContent() {
         itemStatus(item) === "stock" || itemStatus(item) === "archive" ? (
           <button
             type="button"
-            onClick={() => void moveItem(item._id, "en_ligne")}
+            onClick={(event) => {
+              event.stopPropagation();
+              void moveItem(item._id, "en_ligne");
+            }}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--primary)] text-sm font-semibold text-white"
           >
             En ligne
@@ -389,43 +434,44 @@ function AppContent() {
         ) : (
           <button
             type="button"
-            onClick={() => void moveItem(item._id, "stock")}
+            onClick={(event) => {
+              event.stopPropagation();
+              void moveItem(item._id, "stock");
+            }}
             className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border)] text-sm font-medium"
           >
             Remettre en stock
           </button>
         )
       ) : null}
-      <div className="grid grid-cols-2 gap-2">
       <button
         type="button"
-        onClick={() => openEditArticle(item)}
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium"
-      >
-        <Pencil className="h-4 w-4" />
-        Modifier
-      </button>
-      <button
-        type="button"
-        onClick={() => void deleteArticle(item)}
+        onClick={(event) => {
+          event.stopPropagation();
+          requestDelete(item);
+        }}
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium text-red-600"
       >
         <Trash2 className="h-4 w-4" />
         Supprimer
       </button>
-      </div>
     </div>
   );
 
-  const articleCard = (item: ListedItem, draggable = false) => (
+  const articleCard = (
+    item: ListedItem,
+    draggable = false,
+    detailType: DetailMode = "article",
+  ) => (
     <article
       key={item._id}
       draggable={draggable}
+      onClick={() => openDetail(item, detailType)}
       onDragStart={(event) => {
         setDraggedId(item._id);
         event.dataTransfer.setData("text/plain", item._id);
       }}
-      className="rounded-md border border-[var(--border)] bg-[var(--card)]"
+      className="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--card)]"
     >
       <ArticleThumb item={item} />
       <div className="grid gap-2 p-3">
@@ -453,6 +499,7 @@ function AppContent() {
   const articleRow = (item: ListedItem) => (
     <article
       key={item._id}
+      onClick={() => openDetail(item, "article")}
       className="grid gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 sm:grid-cols-[72px_1fr_auto]"
     >
       <img
@@ -485,6 +532,7 @@ function AppContent() {
     <article
       key={item._id}
       draggable
+      onClick={() => openDetail(item, "demande")}
       onDragStart={(event) => {
         setDraggedId(item._id);
         event.dataTransfer.setData("text/plain", item._id);
@@ -510,17 +558,13 @@ function AppContent() {
         <div className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
           {[item.brand, item.size].filter(Boolean).join(" · ") || item.category}
         </div>
-        <div className="mt-2 flex gap-1">
+        <div className="mt-2">
           <button
             type="button"
-            onClick={() => openEditArticle(item)}
-            className="rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium"
-          >
-            Modifier
-          </button>
-          <button
-            type="button"
-            onClick={() => void deleteArticle(item)}
+            onClick={(event) => {
+              event.stopPropagation();
+              requestDelete(item);
+            }}
             className="rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-red-600"
           >
             Supprimer
@@ -654,7 +698,7 @@ function AppContent() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {wonItems.map((item) => articleCard(item))}
+                {wonItems.map((item) => articleCard(item, false, "demande"))}
               </div>
             )
           ) : (
@@ -728,6 +772,135 @@ function AppContent() {
           )}
         </main>
       </div>
+
+      {detailItem ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-3">
+          <section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--card)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+              <div>
+                <h2 className="font-semibold">
+                  {detailMode === "demande" ? "Fiche demande" : "Fiche article"}
+                </h2>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {statusLabel(detailItem.status)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDetail}
+                className="rounded-md border border-[var(--border)] p-2"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 p-4 md:grid-cols-[220px_1fr]">
+              <img
+                src={detailItem.photoUrls[0] ?? ""}
+                alt=""
+                className="aspect-square w-full rounded-md bg-[var(--muted)] object-cover"
+              />
+              <div className="grid gap-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{detailItem.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
+                    {detailItem.description}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+                  {[
+                    ["Prix", detailItem.price != null ? `${detailItem.price.toFixed(2)} €` : "-"],
+                    ["Marque", detailItem.brand ?? "-"],
+                    ["Taille", detailItem.size ?? "-"],
+                    ["État", detailItem.condition],
+                    ["Catégorie", detailItem.category],
+                    ["Couleur", detailItem.color ?? "-"],
+                    ["Matière", detailItem.material ?? "-"],
+                    ["Référence", detailItem.sku ?? "-"],
+                    ["Quantité", String(detailItem.quantity)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-md border border-[var(--border)] p-3">
+                      <div className="text-xs text-[var(--muted-foreground)]">{label}</div>
+                      <div className="mt-1 font-medium">{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {detailMode === "demande" ? (
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium" htmlFor="tracking-notes">
+                      Notes de suivi
+                    </label>
+                    <textarea
+                      id="tracking-notes"
+                      value={trackingNoteDraft}
+                      onChange={(event) => setTrackingNoteDraft(event.target.value)}
+                      className="min-h-32 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                      placeholder="Ajouter une note, un retour client, un numéro de suivi..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void saveTrackingNotes()}
+                      disabled={busy === "notes"}
+                      className="h-10 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy === "notes" ? "Enregistrement..." : "Enregistrer les notes"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => requestDelete(detailItem)}
+                className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium text-red-600"
+              >
+                Supprimer
+              </button>
+              {detailMode === "article" ? (
+                <button
+                  type="button"
+                  onClick={() => openEditArticle(detailItem)}
+                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Modifier
+                </button>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-3">
+          <section className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+            <h2 className="font-semibold">Supprimer l’article</h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
+              Supprimer définitivement “{deleteTarget.title}” ? Cette action ne peut pas être annulée.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDelete()}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Supprimer
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-40 flex justify-end bg-black/20">
