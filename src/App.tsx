@@ -1,11 +1,29 @@
-import { FormEvent, useState } from "react";
+import { DragEvent, FormEvent, useMemo, useState } from "react";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ImagePlus, Loader2, Package, Pencil, Search, Sparkles, X } from "lucide-react";
+import {
+  ImagePlus,
+  Kanban,
+  LayoutGrid,
+  List,
+  Loader2,
+  Package,
+  Pencil,
+  Search,
+  Sparkles,
+  Trash2,
+  Trophy,
+  X,
+} from "lucide-react";
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
 import { useUpload } from "./lib/useUpload";
+
+type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
+type AppTab = "stock" | "suivi";
+type StockMode = "cards" | "list";
+type TrackingTab = "process" | "gagne";
 
 type FormState = {
   photos: Id<"_storage">[];
@@ -28,6 +46,8 @@ type FormState = {
   aiConfidence?: number;
   aiNotes: string;
 };
+
+type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
 
 const initialForm: FormState = {
   photos: [],
@@ -58,7 +78,11 @@ const conditions = [
   "Satisfaisant",
 ];
 
-type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
+const processColumns: Array<{ status: KlydeStatus; label: string }> = [
+  { status: "en_ligne", label: "En ligne" },
+  { status: "en_cours_envoi", label: "En cours d’envoi" },
+  { status: "envoye", label: "Envoyé" },
+];
 
 function inputClass() {
   return "h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]";
@@ -67,6 +91,27 @@ function inputClass() {
 function asNumber(value: string) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function itemStatus(item: ListedItem): KlydeStatus {
+  if (item.status === "en_stock" || item.status === "reserve") return "stock";
+  if (item.status === "vendu") return "gagne";
+  return item.status as KlydeStatus;
+}
+
+function statusLabel(status: string) {
+  const normalized = status === "en_stock" || status === "reserve" ? "stock" : status;
+  return (
+    {
+      stock: "Stock",
+      en_ligne: "En ligne",
+      en_cours_envoi: "En cours d’envoi",
+      envoye: "Envoyé",
+      gagne: "Gagné",
+      vendu: "Gagné",
+      archive: "Archivé",
+    }[normalized] ?? "Stock"
+  );
 }
 
 function Field({
@@ -90,12 +135,26 @@ function Logo() {
   return <div className="text-xl font-semibold text-[var(--logo)]">Klyde</div>;
 }
 
+function ArticleThumb({ item }: { item: ListedItem }) {
+  return (
+    <img
+      src={item.photoUrls[0] ?? ""}
+      alt=""
+      className="aspect-square w-full rounded-t-md bg-[var(--muted)] object-cover"
+    />
+  );
+}
+
 function AppContent() {
+  const [activeTab, setActiveTab] = useState<AppTab>("stock");
+  const [stockMode, setStockMode] = useState<StockMode>("cards");
+  const [trackingTab, setTrackingTab] = useState<TrackingTab>("process");
   const [form, setForm] = useState<FormState>(initialForm);
   const [editingId, setEditingId] = useState<Id<"klydeItems"> | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [extraDetails, setExtraDetails] = useState("");
+  const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,7 +163,18 @@ function AppContent() {
   const createItem = useMutation(api.klyde.create);
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
+  const removeItem = useMutation(api.klyde.remove);
   const items = useQuery(api.klyde.list, { searchText: searchText || undefined });
+
+  const visibleItems = items ?? [];
+  const processItems = useMemo(
+    () => visibleItems.filter((item) => processColumns.some((column) => column.status === itemStatus(item))),
+    [visibleItems],
+  );
+  const wonItems = useMemo(
+    () => visibleItems.filter((item) => itemStatus(item) === "gagne"),
+    [visibleItems],
+  );
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -160,6 +230,24 @@ function AppContent() {
       photos: current.photos.filter((_, photoIndex) => photoIndex !== index),
       previewUrls: current.previewUrls.filter((_, photoIndex) => photoIndex !== index),
     }));
+  }
+
+  async function deleteArticle(item: ListedItem) {
+    if (!window.confirm(`Supprimer définitivement “${item.title}” ?`)) return;
+    await removeItem({ id: item._id });
+  }
+
+  async function moveItem(id: Id<"klydeItems">, status: KlydeStatus) {
+    await updateStatus({ id, status });
+  }
+
+  function handleDrop(event: DragEvent, status: KlydeStatus) {
+    event.preventDefault();
+    const raw = event.dataTransfer.getData("text/plain");
+    const id = (raw || draggedId) as Id<"klydeItems"> | null;
+    setDraggedId(null);
+    if (!id) return;
+    void moveItem(id, status);
   }
 
   async function handleFiles(files: FileList | null) {
@@ -262,15 +350,112 @@ function AppContent() {
     }
   }
 
+  const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setActiveTab(tab)}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium",
+        activeTab === tab && "bg-[var(--sidebar-active)]",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
+  const actionButtons = (item: ListedItem) => (
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        onClick={() => openEditArticle(item)}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium"
+      >
+        <Pencil className="h-4 w-4" />
+        Modifier
+      </button>
+      <button
+        type="button"
+        onClick={() => void deleteArticle(item)}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium text-red-600"
+      >
+        <Trash2 className="h-4 w-4" />
+        Supprimer
+      </button>
+    </div>
+  );
+
+  const articleCard = (item: ListedItem, draggable = false) => (
+    <article
+      key={item._id}
+      draggable={draggable}
+      onDragStart={(event) => {
+        setDraggedId(item._id);
+        event.dataTransfer.setData("text/plain", item._id);
+      }}
+      className="rounded-md border border-[var(--border)] bg-[var(--card)]"
+    >
+      <ArticleThumb item={item} />
+      <div className="grid gap-2 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="line-clamp-2 text-sm font-semibold">{item.title}</h2>
+          <span className="shrink-0 text-sm font-semibold">
+            {item.price != null ? `${item.price.toFixed(2)} €` : "-"}
+          </span>
+        </div>
+        <div className="text-xs text-[var(--muted-foreground)]">
+          {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
+        </div>
+        <div className="text-xs text-[var(--muted-foreground)]">
+          {[item.category, item.color].filter(Boolean).join(" · ")}
+        </div>
+        <div className="flex items-center justify-between pt-1 text-xs text-[var(--muted-foreground)]">
+          <span>Stock x{item.quantity}</span>
+          <span>{statusLabel(item.status)}</span>
+        </div>
+        {actionButtons(item)}
+      </div>
+    </article>
+  );
+
+  const articleRow = (item: ListedItem) => (
+    <article
+      key={item._id}
+      className="grid gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 sm:grid-cols-[72px_1fr_auto]"
+    >
+      <img
+        src={item.photoUrls[0] ?? ""}
+        alt=""
+        className="aspect-square w-20 rounded-md bg-[var(--muted)] object-cover sm:w-[72px]"
+      />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-semibold">{item.title}</h2>
+          <span className="rounded-md bg-[var(--muted)] px-2 py-1 text-xs">
+            {statusLabel(item.status)}
+          </span>
+        </div>
+        <div className="mt-1 text-sm text-[var(--muted-foreground)]">
+          {[item.brand, item.size, item.category, item.condition].filter(Boolean).join(" · ")}
+        </div>
+        <div className="mt-1 text-sm text-[var(--muted-foreground)]">
+          {item.sku ? `Réf. ${item.sku}` : "Sans référence"}
+        </div>
+      </div>
+      <div className="grid gap-2 sm:min-w-56 sm:justify-items-end">
+        <div className="font-semibold">{item.price != null ? `${item.price.toFixed(2)} €` : "-"}</div>
+        <div className="w-full sm:w-56">{actionButtons(item)}</div>
+      </div>
+    </article>
+  );
+
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <aside className="hidden w-56 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:block">
         <Logo />
-        <nav className="mt-8">
-          <button className="flex w-full items-center gap-2 rounded-md bg-[var(--sidebar-active)] px-3 py-2 text-left text-sm font-medium">
-            <Package className="h-4 w-4" />
-            Articles
-          </button>
+        <nav className="mt-8 grid gap-1">
+          {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
+          {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
         </nav>
       </aside>
 
@@ -279,7 +464,9 @@ function AppContent() {
           <div className="shrink-0 md:hidden">
             <Logo />
           </div>
-          <h1 className="hidden text-lg font-semibold md:block">Articles</h1>
+          <h1 className="hidden text-lg font-semibold md:block">
+            {activeTab === "stock" ? "Stock" : "Suivi"}
+          </h1>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -292,15 +479,72 @@ function AppContent() {
           </div>
         </header>
 
+        <div className="grid grid-cols-2 border-b border-[var(--border)] md:hidden">
+          <button
+            type="button"
+            onClick={() => setActiveTab("stock")}
+            className={cn("py-3 text-sm font-medium", activeTab === "stock" && "bg-[var(--muted)]")}
+          >
+            Stock
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("suivi")}
+            className={cn("py-3 text-sm font-medium", activeTab === "suivi" && "bg-[var(--muted)]")}
+          >
+            Suivi
+          </button>
+        </div>
+
         <main className="p-3 sm:p-4 md:p-6">
-          <div className="mb-5 flex w-full max-w-md items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3">
-            <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
-            <input
-              className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Rechercher un article"
-            />
+          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex w-full max-w-md items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3">
+              <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <input
+                className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Rechercher un article"
+              />
+            </div>
+
+            {activeTab === "stock" ? (
+              <div className="inline-flex w-fit rounded-md border border-[var(--border)] p-1">
+                <button
+                  type="button"
+                  onClick={() => setStockMode("cards")}
+                  className={cn("rounded px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
+                  aria-label="Mode cards"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockMode("list")}
+                  className={cn("rounded px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
+                  aria-label="Mode liste"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="inline-flex w-fit rounded-md border border-[var(--border)] p-1">
+                <button
+                  type="button"
+                  onClick={() => setTrackingTab("process")}
+                  className={cn("rounded px-3 py-2 text-sm", trackingTab === "process" && "bg-[var(--muted)]")}
+                >
+                  Process
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTrackingTab("gagne")}
+                  className={cn("rounded px-3 py-2 text-sm", trackingTab === "gagne" && "bg-[var(--muted)]")}
+                >
+                  Gagné
+                </button>
+              </div>
+            )}
           </div>
 
           {items === undefined ? (
@@ -308,66 +552,71 @@ function AppContent() {
               <Loader2 className="h-4 w-4 animate-spin" />
               Chargement du stock
             </div>
-          ) : items.length === 0 ? (
-            <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-8 text-sm text-[var(--muted-foreground)]">
-              Aucun article.
-            </div>
+          ) : activeTab === "stock" ? (
+            visibleItems.length === 0 ? (
+              <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-8 text-sm text-[var(--muted-foreground)]">
+                Aucun article.
+              </div>
+            ) : stockMode === "cards" ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {visibleItems.map((item) => articleCard(item))}
+              </div>
+            ) : (
+              <div className="grid gap-3">{visibleItems.map((item) => articleRow(item))}</div>
+            )
+          ) : trackingTab === "gagne" ? (
+            wonItems.length === 0 ? (
+              <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-8 text-sm text-[var(--muted-foreground)]">
+                Aucun article gagné.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {wonItems.map((item) => articleCard(item))}
+              </div>
+            )
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {items.map((item) => (
-                <article
-                  key={item._id}
-                  className="rounded-md border border-[var(--border)] bg-[var(--card)]"
-                >
-                  <img
-                    src={item.photoUrls[0] ?? ""}
-                    alt=""
-                    className="aspect-square w-full rounded-t-md bg-[var(--muted)] object-cover"
-                  />
-                  <div className="grid gap-2 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <h2 className="line-clamp-2 text-sm font-semibold">{item.title}</h2>
-                      <span className="shrink-0 text-sm font-semibold">
-                        {item.price != null ? `${item.price.toFixed(2)} €` : "-"}
+            <div className="grid gap-4 lg:grid-cols-3">
+              {processColumns.map((column) => {
+                const columnItems = processItems.filter((item) => itemStatus(item) === column.status);
+                return (
+                  <section
+                    key={column.status}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => handleDrop(event, column.status)}
+                    className="min-h-72 rounded-md border border-[var(--border)] bg-[var(--card)]"
+                  >
+                    <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-3">
+                      <h2 className="text-sm font-semibold">{column.label}</h2>
+                      <span className="rounded-md bg-[var(--muted)] px-2 py-1 text-xs">
+                        {columnItems.length}
                       </span>
                     </div>
-                    <div className="text-xs text-[var(--muted-foreground)]">
-                      {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
+                    <div className="grid gap-3 p-3">
+                      {columnItems.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">
+                          Glisse un article ici.
+                        </div>
+                      ) : (
+                        columnItems.map((item) => (
+                          <div key={item._id} className="grid gap-2">
+                            {articleCard(item, true)}
+                            {column.status === "envoye" ? (
+                              <button
+                                type="button"
+                                onClick={() => void moveItem(item._id, "gagne")}
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--primary)] text-sm font-semibold text-white"
+                              >
+                                <Trophy className="h-4 w-4" />
+                                Marquer gagné
+                              </button>
+                            ) : null}
+                          </div>
+                        ))
+                      )}
                     </div>
-                    <div className="text-xs text-[var(--muted-foreground)]">
-                      {[item.category, item.color].filter(Boolean).join(" · ")}
-                    </div>
-                    <div className="flex items-center justify-between pt-2">
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        Stock x{item.quantity}
-                      </span>
-                      <select
-                        value={item.status}
-                        onChange={(event) =>
-                          void updateStatus({
-                            id: item._id,
-                            status: event.target.value as "en_stock" | "reserve" | "vendu" | "archive",
-                          })
-                        }
-                        className="rounded-md border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs"
-                      >
-                        <option value="en_stock">En stock</option>
-                        <option value="reserve">Réservé</option>
-                        <option value="vendu">Vendu</option>
-                        <option value="archive">Archive</option>
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openEditArticle(item)}
-                      className="mt-1 inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Modifier
-                    </button>
-                  </div>
-                </article>
-              ))}
+                  </section>
+                );
+              })}
             </div>
           )}
         </main>
@@ -380,7 +629,9 @@ function AppContent() {
             className="h-full w-full overflow-y-auto bg-[var(--background)] sm:max-w-2xl sm:border-l sm:border-[var(--border)]"
           >
             <div className="sticky top-0 z-10 flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 py-3 sm:px-4">
-              <h2 className="min-w-0 text-base font-semibold">{editingId ? "Modifier l’article" : "Nouvel article"}</h2>
+              <h2 className="min-w-0 text-base font-semibold">
+                {editingId ? "Modifier l’article" : "Nouvel article"}
+              </h2>
               <button
                 type="button"
                 onClick={closeDrawer}
@@ -454,60 +705,70 @@ function AppContent() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <Field label="Titre" wide>
-                  <input className={inputClass()} value={form.title} onChange={(e) => update("title", e.target.value)} required />
+                  <input
+                    className={inputClass()}
+                    value={form.title}
+                    onChange={(event) => update("title", event.target.value)}
+                    required
+                  />
                 </Field>
                 <Field label="Description" wide>
-                  <textarea className="min-h-24 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]" value={form.description} onChange={(e) => update("description", e.target.value)} required />
+                  <textarea
+                    className="min-h-24 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    value={form.description}
+                    onChange={(event) => update("description", event.target.value)}
+                    required
+                  />
                 </Field>
                 <Field label="Catégorie">
-                  <input className={inputClass()} value={form.category} onChange={(e) => update("category", e.target.value)} required />
+                  <input className={inputClass()} value={form.category} onChange={(event) => update("category", event.target.value)} required />
                 </Field>
                 <Field label="Marque">
-                  <input className={inputClass()} value={form.brand} onChange={(e) => update("brand", e.target.value)} />
+                  <input className={inputClass()} value={form.brand} onChange={(event) => update("brand", event.target.value)} />
                 </Field>
                 <Field label="Taille">
-                  <input className={inputClass()} value={form.size} onChange={(e) => update("size", e.target.value)} />
+                  <input className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)} />
                 </Field>
                 <Field label="État">
-                  <select className={inputClass()} value={form.condition} onChange={(e) => update("condition", e.target.value)}>
+                  <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
                     {conditions.map((condition) => (
                       <option key={condition}>{condition}</option>
                     ))}
                   </select>
                 </Field>
                 <Field label="Couleur">
-                  <input className={inputClass()} value={form.color} onChange={(e) => update("color", e.target.value)} />
+                  <input className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)} />
                 </Field>
                 <Field label="Matière">
-                  <input className={inputClass()} value={form.material} onChange={(e) => update("material", e.target.value)} />
+                  <input className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)} />
                 </Field>
                 <Field label="Prix">
-                  <input className={inputClass()} inputMode="decimal" value={form.price} onChange={(e) => update("price", e.target.value)} />
+                  <input className={inputClass()} inputMode="decimal" value={form.price} onChange={(event) => update("price", event.target.value)} />
                 </Field>
                 <Field label="Colis">
-                  <select className={inputClass()} value={form.parcelSize} onChange={(e) => update("parcelSize", e.target.value)}>
+                  <select className={inputClass()} value={form.parcelSize} onChange={(event) => update("parcelSize", event.target.value)}>
                     <option>Petit</option>
                     <option>Moyen</option>
                     <option>Grand</option>
                   </select>
                 </Field>
                 <Field label="Genre">
-                  <input className={inputClass()} value={form.gender} onChange={(e) => update("gender", e.target.value)} />
+                  <input className={inputClass()} value={form.gender} onChange={(event) => update("gender", event.target.value)} />
                 </Field>
                 <Field label="Style">
-                  <input className={inputClass()} value={form.style} onChange={(e) => update("style", e.target.value)} />
+                  <input className={inputClass()} value={form.style} onChange={(event) => update("style", event.target.value)} />
                 </Field>
                 <Field label="Emplacement">
-                  <input className={inputClass()} value={form.location} onChange={(e) => update("location", e.target.value)} />
+                  <input className={inputClass()} value={form.location} onChange={(event) => update("location", event.target.value)} />
                 </Field>
                 <Field label="Référence">
-                  <input className={inputClass()} value={form.sku} onChange={(e) => update("sku", e.target.value)} />
+                  <input className={inputClass()} value={form.sku} onChange={(event) => update("sku", event.target.value)} />
                 </Field>
                 <Field label="Quantité">
-                  <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(e) => update("quantity", e.target.value)} />
+                  <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
                 </Field>
                 <Field label="Notes IA">
-                  <input className={inputClass()} value={form.aiNotes} onChange={(e) => update("aiNotes", e.target.value)} />
+                  <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
                 </Field>
               </div>
 

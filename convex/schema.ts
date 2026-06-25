@@ -915,6 +915,12 @@ export default defineSchema({
     sku: v.optional(v.string()),
     quantity: v.number(),
     status: v.union(
+      v.literal("stock"),
+      v.literal("en_ligne"),
+      v.literal("en_cours_envoi"),
+      v.literal("envoye"),
+      v.literal("gagne"),
+      // Anciennes valeurs conservées pour les articles créés avant le suivi.
       v.literal("en_stock"),
       v.literal("reserve"),
       v.literal("vendu"),

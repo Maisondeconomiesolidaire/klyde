@@ -12,6 +12,15 @@ const CONDITIONS = [
 
 const PARCEL_SIZES = ["Petit", "Moyen", "Grand"] as const;
 
+const itemStatus = v.union(
+  v.literal("stock"),
+  v.literal("en_ligne"),
+  v.literal("en_cours_envoi"),
+  v.literal("envoye"),
+  v.literal("gagne"),
+  v.literal("archive"),
+);
+
 type KlydeAIResult = {
   title: string;
   description: string;
@@ -120,14 +129,7 @@ async function callOpenAI<T>(apiKey: string, body: Record<string, unknown>): Pro
 export const list = query({
   args: {
     searchText: v.optional(v.string()),
-    status: v.optional(
-      v.union(
-        v.literal("en_stock"),
-        v.literal("reserve"),
-        v.literal("vendu"),
-        v.literal("archive"),
-      ),
-    ),
+    status: v.optional(itemStatus),
   },
   handler: async (ctx, args) => {
     await requireSignedIn(ctx);
@@ -206,7 +208,7 @@ export const create = mutation({
       location: cleanOptional(args.location),
       sku: cleanOptional(args.sku),
       quantity: normalizeQuantity(args.quantity),
-      status: "en_stock",
+      status: "stock",
       aiConfidence: args.aiConfidence,
       aiNotes: cleanOptional(args.aiNotes),
       createdAt: now,
@@ -218,12 +220,7 @@ export const create = mutation({
 export const updateStatus = mutation({
   args: {
     id: v.id("klydeItems"),
-    status: v.union(
-      v.literal("en_stock"),
-      v.literal("reserve"),
-      v.literal("vendu"),
-      v.literal("archive"),
-    ),
+    status: itemStatus,
   },
   handler: async (ctx, { id, status }) => {
     await requireSignedIn(ctx);
