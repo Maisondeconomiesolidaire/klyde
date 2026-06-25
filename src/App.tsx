@@ -1,4 +1,4 @@
-import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SignedIn, SignedOut, SignInButton, UserButton, useClerk, useUser } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
@@ -96,46 +96,69 @@ const conditions = [
 const categoryTree = {
   Vêtements: [
     "Manteaux et vestes",
+    "Blousons et bombers",
+    "Doudounes et parkas",
+    "Trenchs et imperméables",
     "Pulls et gilets",
     "Sweats",
     "Chemises et blouses",
     "T-shirts et tops",
+    "Tops et débardeurs",
     "Robes",
+    "Combinaisons",
     "Jupes",
     "Pantalons",
     "Jeans",
+    "Chinos et toiles",
     "Shorts",
+    "Tailleurs et costumes",
     "Ensembles",
-    "Sous-vêtements",
-    "Pyjamas",
+    "Joggings et survêtements",
+    "Leggings",
     "Sport",
     "Maillots de bain",
+    "Sous-vêtements",
+    "Lingerie",
+    "Pyjamas",
   ],
   Chaussures: [
     "Baskets",
     "Bottes et bottines",
     "Sandales",
+    "Tongs et claquettes",
     "Escarpins",
+    "Ballerines",
     "Mocassins",
+    "Espadrilles",
     "Chaussures de ville",
     "Chaussures de sport",
+    "Chaussons",
   ],
   Accessoires: [
     "Sacs",
+    "Sacs à dos",
+    "Portefeuilles et maroquinerie",
     "Ceintures",
     "Chapeaux et bonnets",
     "Écharpes et foulards",
+    "Gants",
     "Bijoux",
+    "Montres",
     "Lunettes",
+    "Cravates et nœuds papillon",
     "Accessoires cheveux",
   ],
   "Bébé et enfant": [
+    "Vêtements de naissance",
     "Bodies",
     "Pyjamas",
     "Hauts",
     "Bas",
     "Robes et ensembles",
     "Manteaux",
+    "Sport enfant",
+    "Maillots de bain enfant",
+    "Sous-vêtements enfant",
     "Chaussures enfant",
     "Accessoires enfant",
   ],
@@ -222,10 +245,11 @@ const shopMenus = [
   {
     label: "Femme",
     category: "Vêtements",
+    gender: "Femme",
     groups: [
-      ["Prêt-à-porter", ["Manteaux et vestes", "Pulls et gilets", "Chemises et blouses", "T-shirts et tops", "Robes", "Jupes", "Pantalons", "Jeans"]],
-      ["Essentiels", ["Sweats", "Ensembles", "Sport", "Maillots de bain", "Pyjamas", "Sous-vêtements"]],
-      ["Silhouettes", ["Pièces de soirée", "Tailoring", "Denim", "Minimalisme", "Chic quotidien"]],
+      ["Vêtements", ["Manteaux et vestes", "Pulls et gilets", "Chemises et blouses", "T-shirts et tops", "Robes", "Jupes", "Pantalons", "Jeans"]],
+      ["Tendances", ["Combinaisons", "Tailleurs et costumes", "Ensembles", "Leggings", "Sport", "Maillots de bain"]],
+      ["Lingerie & nuit", ["Lingerie", "Sous-vêtements", "Pyjamas"]],
     ],
   },
   {
@@ -233,32 +257,36 @@ const shopMenus = [
     category: "Vêtements",
     gender: "Homme",
     groups: [
-      ["Vêtements", ["Manteaux et vestes", "Pulls et gilets", "Chemises et blouses", "T-shirts et tops", "Pantalons", "Jeans", "Shorts"]],
-      ["Style", ["Sport", "Sweats", "Ensembles", "Casual premium", "Classiques"]],
+      ["Vêtements", ["Manteaux et vestes", "Blousons et bombers", "Pulls et gilets", "Chemises et blouses", "T-shirts et tops", "Pantalons", "Jeans", "Chinos et toiles", "Shorts"]],
+      ["Style", ["Sweats", "Tailleurs et costumes", "Joggings et survêtements", "Sport", "Sous-vêtements"]],
     ],
   },
   {
     label: "Chaussures",
     category: "Chaussures",
     groups: [
-      ["Catégories", ["Baskets", "Bottes et bottines", "Sandales", "Escarpins", "Mocassins", "Chaussures de ville", "Chaussures de sport"]],
-      ["Sélection", ["Cuir", "Daim", "Soirée", "Quotidien", "Intemporel"]],
+      ["Femme", ["Baskets", "Escarpins", "Ballerines", "Bottes et bottines", "Sandales", "Espadrilles"]],
+      ["Homme", ["Chaussures de ville", "Mocassins", "Chaussures de sport", "Tongs et claquettes"]],
+      ["Toutes", ["Chaussons"]],
     ],
   },
   {
     label: "Accessoires",
     category: "Accessoires",
     groups: [
-      ["Accessoires", ["Sacs", "Ceintures", "Chapeaux et bonnets", "Écharpes et foulards", "Bijoux", "Lunettes", "Accessoires cheveux"]],
-      ["Éditions", ["Pièces signature", "Cadeaux", "Nouveautés", "Couleurs fortes"]],
+      ["Sacs & maroquinerie", ["Sacs", "Sacs à dos", "Portefeuilles et maroquinerie", "Ceintures"]],
+      ["Accessoires", ["Chapeaux et bonnets", "Écharpes et foulards", "Gants", "Cravates et nœuds papillon"]],
+      ["Bijoux & montres", ["Bijoux", "Montres", "Lunettes", "Accessoires cheveux"]],
     ],
   },
   {
     label: "Enfant",
     category: "Bébé et enfant",
+    gender: "Enfant",
     groups: [
-      ["Bébé et enfant", ["Bodies", "Pyjamas", "Hauts", "Bas", "Robes et ensembles", "Manteaux", "Chaussures enfant", "Accessoires enfant"]],
-      ["Âges", ["Bébé", "2-6 ans", "8-12 ans", "Adolescent"]],
+      ["Bébé", ["Vêtements de naissance", "Bodies", "Pyjamas"]],
+      ["Enfant", ["Hauts", "Bas", "Robes et ensembles", "Manteaux", "Sport enfant"]],
+      ["Plus", ["Maillots de bain enfant", "Sous-vêtements enfant", "Chaussures enfant", "Accessoires enfant"]],
     ],
   },
 ] as const;
@@ -290,6 +318,7 @@ function formatPrice(value?: number) {
 function currentRoute(): ShopRoute | "" {
   const hash = window.location.hash.replace(/^#/, "");
   if (hash === "/boutique/panier") return "/boutique/panier" satisfies ShopRoute;
+  if (hash === "/boutique/favoris") return "/boutique/favoris" satisfies ShopRoute;
   if (hash.startsWith("/boutique/categorie/")) return hash;
   if (hash.startsWith("/boutique/article/")) return hash;
   if (hash === "/boutique") return "/boutique" satisfies ShopRoute;
@@ -375,6 +404,241 @@ async function composeNeutralWhiteBackground(foregroundBlob: Blob) {
   return canvasToPngBlob(canvas);
 }
 
+type CropRect = { x: number; y: number; w: number; h: number };
+type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function PhotoEditor({
+  url,
+  upload,
+  onReplace,
+  onClose,
+}: {
+  url: string;
+  upload: (file: File) => Promise<Id<"_storage">>;
+  onReplace: (newId: Id<"_storage">, newUrl: string) => void;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<"view" | "crop">("view");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [crop, setCrop] = useState<CropRect>({ x: 0.08, y: 0.08, w: 0.84, h: 0.84 });
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ type: CropHandle; startX: number; startY: number; start: CropRect } | null>(
+    null,
+  );
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  function startDrag(type: CropHandle, event: React.PointerEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current = { type, startX: event.clientX, startY: event.clientY, start: crop };
+    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+  }
+
+  function moveDrag(event: React.PointerEvent) {
+    const drag = dragRef.current;
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!drag || !rect) return;
+    const dx = (event.clientX - drag.startX) / rect.width;
+    const dy = (event.clientY - drag.startY) / rect.height;
+    const minSize = 0.08;
+    let { x, y, w, h } = drag.start;
+    if (drag.type === "move") {
+      x = clamp01(Math.min(Math.max(x + dx, 0), 1 - w));
+      y = clamp01(Math.min(Math.max(y + dy, 0), 1 - h));
+    } else {
+      let x2 = x + w;
+      let y2 = y + h;
+      if (drag.type.includes("n")) y = clamp01(Math.min(y + dy, y2 - minSize));
+      if (drag.type.includes("s")) y2 = clamp01(Math.max(y2 + dy, y + minSize));
+      if (drag.type.includes("w")) x = clamp01(Math.min(x + dx, x2 - minSize));
+      if (drag.type.includes("e")) x2 = clamp01(Math.max(x2 + dx, x + minSize));
+      w = x2 - x;
+      h = y2 - y;
+    }
+    setCrop({ x, y, w, h });
+  }
+
+  function endDrag() {
+    dragRef.current = null;
+  }
+
+  async function applyCrop() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Image introuvable.");
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob);
+      const sx = Math.round(crop.x * bitmap.width);
+      const sy = Math.round(crop.y * bitmap.height);
+      const sw = Math.max(1, Math.round(crop.w * bitmap.width));
+      const sh = Math.max(1, Math.round(crop.h * bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas indisponible.");
+      context.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
+      bitmap.close?.();
+      const output = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/webp", 0.9),
+      );
+      if (!output) throw new Error("Export impossible.");
+      const file = new File([output], `klyde-rogne-${Date.now()}.webp`, { type: "image/webp" });
+      const id = await upload(file);
+      onReplace(id, URL.createObjectURL(output));
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Rognage impossible.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReplaceFile(files: FileList | null) {
+    const file = Array.from(files ?? []).find((item) => item.type.startsWith("image/"));
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await upload(file);
+      onReplace(id, URL.createObjectURL(file));
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Remplacement impossible.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-black/80 p-4 sm:p-8">
+      <div className="flex items-center justify-between text-white">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
+          {mode === "crop" ? "Rogner l’image" : "Modifier l’image"}
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-white/30 p-2 text-white"
+          aria-label="Fermer"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+        <div ref={wrapperRef} className="relative inline-block select-none">
+          <img
+            src={url}
+            alt=""
+            draggable={false}
+            className="max-h-[68vh] max-w-full object-contain"
+          />
+          {mode === "crop" ? (
+            <div
+              className="absolute inset-0 touch-none"
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+              onPointerLeave={endDrag}
+            >
+              <div className="absolute inset-0 bg-black/45" />
+              <div
+                className="absolute cursor-move border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
+                style={{
+                  left: `${crop.x * 100}%`,
+                  top: `${crop.y * 100}%`,
+                  width: `${crop.w * 100}%`,
+                  height: `${crop.h * 100}%`,
+                }}
+                onPointerDown={(event) => startDrag("move", event)}
+              >
+                {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+                  <span
+                    key={corner}
+                    onPointerDown={(event) => startDrag(corner, event)}
+                    className={cn(
+                      "absolute h-4 w-4 rounded-full border-2 border-[#1f1b18] bg-white",
+                      corner === "nw" && "-left-2 -top-2 cursor-nwse-resize",
+                      corner === "ne" && "-right-2 -top-2 cursor-nesw-resize",
+                      corner === "sw" && "-bottom-2 -left-2 cursor-nesw-resize",
+                      corner === "se" && "-bottom-2 -right-2 cursor-nwse-resize",
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {error ? (
+        <div className="mx-auto mb-3 max-w-md rounded-md bg-red-500/90 px-3 py-2 text-center text-sm text-white">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={(event) => void handleReplaceFile(event.target.files)}
+        />
+        {mode === "view" ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setMode("crop")}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-white px-5 text-sm font-semibold text-[#1f1b18] disabled:opacity-50"
+            >
+              <Scissors className="h-4 w-4" />
+              Rogner
+            </button>
+            <button
+              type="button"
+              onClick={() => replaceInputRef.current?.click()}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-white/40 px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+              Remplacer
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void applyCrop()}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Appliquer le rognage
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("view")}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center rounded-md border border-white/40 px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Field({
   label,
   children,
@@ -426,6 +690,7 @@ function AppContent() {
   const [deleteTarget, setDeleteTarget] = useState<ListedItem | null>(null);
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
@@ -520,6 +785,7 @@ function AppContent() {
   function closeDrawer() {
     form.previewUrls.forEach(revokeLocalPreview);
     setDrawerOpen(false);
+    setEditingPhotoIndex(null);
     setEditingId(null);
     setForm(initialForm);
     setExtraDetails("");
@@ -544,6 +810,18 @@ function AppContent() {
       photos: current.photos.filter((_, photoIndex) => photoIndex !== index),
       previewUrls: current.previewUrls.filter((_, photoIndex) => photoIndex !== index),
     }));
+  }
+
+  function replacePhotoAt(index: number, newId: Id<"_storage">, newUrl: string) {
+    setForm((current) => {
+      if (index < 0 || index >= current.photos.length) return current;
+      revokeLocalPreview(current.previewUrls[index] ?? "");
+      const photos = current.photos.slice();
+      const previewUrls = current.previewUrls.slice();
+      photos[index] = newId;
+      previewUrls[index] = newUrl;
+      return { ...current, photos, previewUrls };
+    });
   }
 
   function requestDelete(item: ListedItem) {
@@ -1354,12 +1632,23 @@ function AppContent() {
               {form.previewUrls.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                   {form.previewUrls.map((url, index) => (
-                    <div key={`${url}-${index}`} className="relative">
-                      <img
-                        src={url}
-                        alt=""
-                        className="aspect-square w-full rounded-md border border-[var(--border)] object-cover"
-                      />
+                    <div key={`${url}-${index}`} className="group relative">
+                      <button
+                        type="button"
+                        onClick={() => setEditingPhotoIndex(index)}
+                        className="block w-full overflow-hidden rounded-md border border-[var(--border)]"
+                        aria-label="Modifier la photo"
+                      >
+                        <img
+                          src={url}
+                          alt=""
+                          className="aspect-square w-full object-cover transition group-hover:opacity-90"
+                        />
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/55 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white opacity-0 transition group-hover:opacity-100">
+                          <Scissors className="h-3 w-3" />
+                          Rogner
+                        </span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => removePhoto(index)}
@@ -1555,6 +1844,15 @@ function AppContent() {
           </form>
         </div>
       ) : null}
+
+      {drawerOpen && editingPhotoIndex !== null && form.previewUrls[editingPhotoIndex] ? (
+        <PhotoEditor
+          url={form.previewUrls[editingPhotoIndex]}
+          upload={upload}
+          onReplace={(newId, newUrl) => replacePhotoAt(editingPhotoIndex, newId, newUrl)}
+          onClose={() => setEditingPhotoIndex(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1597,6 +1895,83 @@ function AuthRequiredModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function MenuLatest({
+  category,
+  label,
+  gender,
+  onNavigate,
+}: {
+  category: string;
+  label: string;
+  gender?: string;
+  onNavigate: () => void;
+}) {
+  const items = useQuery(api.klyde.latestByCategory, { category, limit: 2 });
+  return (
+    <div className="hidden md:block">
+      <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18]/70">
+        Derniers articles · {label}
+      </p>
+      {items && items.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3">
+          {items.map((item) => (
+            <button
+              key={item._id}
+              type="button"
+              onClick={() => {
+                goTo(`/boutique/article/${item._id}`);
+                onNavigate();
+              }}
+              className="group text-left"
+            >
+              <div className="aspect-[3/4] overflow-hidden bg-white">
+                {item.photoUrls[0] ? (
+                  <img
+                    src={item.photoUrls[0]}
+                    alt={item.title}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[#1f1b18]/20">
+                    <Package className="h-8 w-8" />
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 line-clamp-1 text-xs font-medium normal-case tracking-normal">
+                {item.title}
+              </p>
+              <p className="text-xs normal-case tracking-normal text-[var(--primary)]">
+                {formatPrice(item.price)}
+              </p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            goTo(shopCategoryPath(category, undefined, gender));
+            onNavigate();
+          }}
+          className="flex aspect-[3/2] w-full items-center justify-center bg-white"
+        >
+          <img src="/logo-light.png" alt="Klyde" className="h-full w-full object-contain p-10" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          goTo(shopCategoryPath(category, undefined, gender));
+          onNavigate();
+        }}
+        className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#1f1b18]/70 underline underline-offset-4 hover:text-[var(--primary)]"
+      >
+        Voir tout {label}
+      </button>
+    </div>
+  );
+}
+
 function BoutiqueHeader({ cartCount }: { cartCount: number }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   return (
@@ -1620,6 +1995,14 @@ function BoutiqueHeader({ cartCount }: { cartCount: number }) {
             className="hidden rounded-full border border-[#1f1b18]/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18] sm:inline-flex"
           >
             CRM
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo("/boutique/favoris")}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#1f1b18]/15 text-[#1f1b18]"
+            aria-label="Voir les favoris"
+          >
+            <Heart className="h-5 w-5" />
           </button>
           <button
             type="button"
@@ -1662,13 +2045,17 @@ function BoutiqueHeader({ cartCount }: { cartCount: number }) {
               <ChevronDown className="h-3 w-3" />
             </button>
           ))}
-          <button type="button" className="shrink-0 px-4 py-4 hover:bg-white/10">
-            Sélection premium
+          <button
+            type="button"
+            onClick={() => goTo("/boutique/favoris")}
+            className="shrink-0 px-4 py-4 hover:bg-white/10"
+          >
+            Favoris
           </button>
         </div>
         {openMenu ? (
           <div className="absolute inset-x-0 top-full z-40 border-b border-[#1f1b18]/10 bg-[#f6eee5] px-6 py-8 text-left text-[#1f1b18] shadow-[0_24px_60px_rgba(0,0,0,0.08)]">
-            <div className="mx-auto grid max-w-[96rem] gap-8 md:grid-cols-[repeat(4,minmax(0,1fr))_240px]">
+            <div className="mx-auto grid max-w-[96rem] gap-8 md:grid-cols-[repeat(3,minmax(0,1fr))_300px]">
               {shopMenus
                 .find((menu) => menu.label === openMenu)
                 ?.groups.map(([title, links]) => (
@@ -1708,14 +2095,18 @@ function BoutiqueHeader({ cartCount }: { cartCount: number }) {
                     </div>
                   </div>
                 ))}
-              <div className="hidden md:block">
-                <div className="aspect-[3/4] bg-white">
-                  <img src="/logo-light.png" alt="Klyde" className="h-full w-full object-contain p-10" />
-                </div>
-                <p className="mt-3 text-center text-sm normal-case tracking-normal text-[#1f1b18]/58">
-                  {openMenu}
-                </p>
-              </div>
+              {(() => {
+                const menu = shopMenus.find((item) => item.label === openMenu);
+                if (!menu) return null;
+                return (
+                  <MenuLatest
+                    category={menu.category}
+                    label={openMenu}
+                    gender={"gender" in menu ? menu.gender : undefined}
+                    onNavigate={() => setOpenMenu(null)}
+                  />
+                );
+              })()}
             </div>
           </div>
         ) : null}
@@ -1733,6 +2124,8 @@ function BoutiqueShell({ route }: { route: ShopRoute }) {
       <BoutiqueHeader cartCount={cart.count} />
       {route === "/boutique/panier" ? (
         <CartPage cart={cart} />
+      ) : route === "/boutique/favoris" ? (
+        <WishlistPage cart={cart} wishlist={wishlist} onAuthRequired={() => setAuthModalOpen(true)} />
       ) : route.startsWith("/boutique/categorie/") ? (
         <CategoryPage route={route} cart={cart} wishlist={wishlist} />
       ) : route.startsWith("/boutique/article/") ? (
@@ -1968,13 +2361,39 @@ function CategoryPage({
   const [size, setSize] = useState("");
   const [color, setColor] = useState("");
   const [material, setMaterial] = useState("");
-  const items = useQuery(api.klyde.listPublic, {
+  const [brand, setBrand] = useState("");
+  const [style, setStyle] = useState("");
+  const [sort, setSort] = useState("recent");
+  const rawItems = useQuery(api.klyde.listPublic, {
     category: parsed.category || undefined,
     subcategory: parsed.subcategory || undefined,
     gender: parsed.gender || undefined,
     size: size || undefined,
     searchText: color || material ? [color, material].filter(Boolean).join(" ") : undefined,
   });
+  const brandOptions = useMemo(
+    () =>
+      Array.from(new Set((rawItems ?? []).map((item) => item.brand).filter((b): b is string => Boolean(b)))).sort(),
+    [rawItems],
+  );
+  const styleOptions = useMemo(
+    () =>
+      Array.from(new Set((rawItems ?? []).map((item) => item.style).filter((s): s is string => Boolean(s)))).sort(),
+    [rawItems],
+  );
+  const items = useMemo(() => {
+    if (!rawItems) return rawItems;
+    const filtered = rawItems.filter((item) => {
+      if (brand && item.brand !== brand) return false;
+      if (style && item.style !== style) return false;
+      return true;
+    });
+    const sorted = [...filtered];
+    if (sort === "price-asc") sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+    else if (sort === "price-desc") sorted.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+    else sorted.sort((a, b) => b._creationTime - a._creationTime);
+    return sorted;
+  }, [rawItems, brand, style, sort]);
   const categorySubcategories =
     parsed.category in categoryTree
       ? categoryTree[parsed.category as keyof typeof categoryTree]
@@ -2035,16 +2454,26 @@ function CategoryPage({
             <option value="">Taille</option>
             {sizes.map((item) => <option key={item}>{item}</option>)}
           </select>
-          <select disabled className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm text-[#1f1b18]/45">
-            <option>Marques</option>
+          <select value={brand} onChange={(event) => setBrand(event.target.value)} disabled={brandOptions.length === 0} className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm disabled:text-[#1f1b18]/45">
+            <option value="">Marques</option>
+            {brandOptions.map((item) => <option key={item}>{item}</option>)}
           </select>
-          <select disabled className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm text-[#1f1b18]/45">
-            <option>Style</option>
+          <select value={style} onChange={(event) => setStyle(event.target.value)} disabled={styleOptions.length === 0} className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm disabled:text-[#1f1b18]/45">
+            <option value="">Style</option>
+            {styleOptions.map((item) => <option key={item}>{item}</option>)}
           </select>
-          <select disabled className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm text-[#1f1b18]/45 lg:w-56">
-            <option>Trier : pertinence</option>
+          <select value={sort} onChange={(event) => setSort(event.target.value)} className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm lg:w-56">
+            <option value="recent">Trier : nouveautés</option>
+            <option value="price-asc">Prix croissant</option>
+            <option value="price-desc">Prix décroissant</option>
           </select>
         </div>
+
+        {items !== undefined ? (
+          <p className="pt-5 text-xs uppercase tracking-[0.18em] text-[#1f1b18]/45">
+            {items.length} article{items.length > 1 ? "s" : ""}
+          </p>
+        ) : null}
 
         {items === undefined ? (
           <div className="flex items-center gap-2 py-16 text-sm text-[#1f1b18]/60">
@@ -2258,6 +2687,85 @@ function ProductDetailPage({
           </dl>
         </aside>
       </section>
+    </main>
+  );
+}
+
+function WishlistPage({
+  cart,
+  wishlist,
+  onAuthRequired,
+}: {
+  cart: ReturnType<typeof useKlydeCart>;
+  wishlist: ReturnType<typeof useShopWishlist>;
+  onAuthRequired: () => void;
+}) {
+  const { isSignedIn } = useUser();
+  const ids = useQuery(api.klyde.myWishlistIds, isSignedIn ? {} : "skip");
+  const articles = useQuery(
+    api.klyde.getManyPublic,
+    ids && ids.length > 0 ? { ids: ids as Id<"klydeItems">[] } : "skip",
+  );
+
+  if (!isSignedIn) {
+    return (
+      <main className="mx-auto grid min-h-[70vh] max-w-xl place-items-center px-4 py-16 text-center">
+        <div>
+          <Heart className="mx-auto h-12 w-12 text-[var(--primary)]" />
+          <h1 className="mt-6 text-3xl font-semibold">Vos favoris</h1>
+          <p className="mt-3 text-sm leading-6 text-[#1f1b18]/60">
+            Connectez-vous pour retrouver les pièces que vous avez sauvegardées.
+          </p>
+          <button
+            type="button"
+            onClick={onAuthRequired}
+            className="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-6 text-sm font-semibold text-white"
+          >
+            Se connecter
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  const items = (articles ?? []).filter((item) => item.status === "en_ligne");
+
+  return (
+    <main className="mx-auto max-w-[96rem] px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mb-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--primary)]">
+          Sélection sauvegardée
+        </p>
+        <h1 className="mt-2 text-4xl font-semibold tracking-tight">Mes favoris</h1>
+      </div>
+
+      {ids === undefined || (ids.length > 0 && articles === undefined) ? (
+        <div className="flex items-center gap-2 py-16 text-sm text-[#1f1b18]/60">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Chargement de vos favoris
+        </div>
+      ) : items.length === 0 ? (
+        <div className="grid place-items-center border border-[#1f1b18]/10 px-6 py-20 text-center">
+          <Heart className="h-10 w-10 text-[var(--primary)]" />
+          <p className="mt-4 text-sm uppercase tracking-[0.2em] text-[#1f1b18]/50">
+            Aucun favori pour le moment.
+          </p>
+          <button
+            type="button"
+            onClick={() => goTo("/boutique")}
+            className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-6 text-sm font-semibold text-white"
+          >
+            Découvrir la boutique
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {items.map((item) => (
+            <ShopProductCard key={item._id} item={item} cart={cart} wishlist={wishlist} />
+          ))}
+        </div>
+      )}
     </main>
   );
 }

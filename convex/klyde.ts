@@ -15,46 +15,69 @@ const PARCEL_SIZES = ["Petit", "Moyen", "Grand"] as const;
 const CATEGORIES = {
   Vêtements: [
     "Manteaux et vestes",
+    "Blousons et bombers",
+    "Doudounes et parkas",
+    "Trenchs et imperméables",
     "Pulls et gilets",
     "Sweats",
     "Chemises et blouses",
     "T-shirts et tops",
+    "Tops et débardeurs",
     "Robes",
+    "Combinaisons",
     "Jupes",
     "Pantalons",
     "Jeans",
+    "Chinos et toiles",
     "Shorts",
+    "Tailleurs et costumes",
     "Ensembles",
-    "Sous-vêtements",
-    "Pyjamas",
+    "Joggings et survêtements",
+    "Leggings",
     "Sport",
     "Maillots de bain",
+    "Sous-vêtements",
+    "Lingerie",
+    "Pyjamas",
   ],
   Chaussures: [
     "Baskets",
     "Bottes et bottines",
     "Sandales",
+    "Tongs et claquettes",
     "Escarpins",
+    "Ballerines",
     "Mocassins",
+    "Espadrilles",
     "Chaussures de ville",
     "Chaussures de sport",
+    "Chaussons",
   ],
   Accessoires: [
     "Sacs",
+    "Sacs à dos",
+    "Portefeuilles et maroquinerie",
     "Ceintures",
     "Chapeaux et bonnets",
     "Écharpes et foulards",
+    "Gants",
     "Bijoux",
+    "Montres",
     "Lunettes",
+    "Cravates et nœuds papillon",
     "Accessoires cheveux",
   ],
   "Bébé et enfant": [
+    "Vêtements de naissance",
     "Bodies",
     "Pyjamas",
     "Hauts",
     "Bas",
     "Robes et ensembles",
     "Manteaux",
+    "Sport enfant",
+    "Maillots de bain enfant",
+    "Sous-vêtements enfant",
     "Chaussures enfant",
     "Accessoires enfant",
   ],
@@ -300,6 +323,21 @@ export const getManyPublic = query({
         .filter((item): item is Doc<"klydeItems"> => Boolean(item))
         .map((item) => withPhotoUrls(ctx, item)),
     );
+  },
+});
+
+export const latestByCategory = query({
+  args: { category: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { category, limit }) => {
+    const items = await ctx.db
+      .query("klydeItems")
+      .withIndex("by_status", (q) => q.eq("status", "en_ligne"))
+      .order("desc")
+      .take(80);
+    const filtered = items
+      .filter((item) => item.category === category && item.price != null)
+      .slice(0, Math.min(limit ?? 4, 8));
+    return Promise.all(filtered.map((item) => withPhotoUrls(ctx, item)));
   },
 });
 
@@ -580,10 +618,10 @@ Retourne uniquement un JSON valide avec ces champs:
   "aiNotes": "points à vérifier humainement"
 }
 Sous-catégories autorisées:
-- Vêtements: Manteaux et vestes, Pulls et gilets, Sweats, Chemises et blouses, T-shirts et tops, Robes, Jupes, Pantalons, Jeans, Shorts, Ensembles, Sous-vêtements, Pyjamas, Sport, Maillots de bain
-- Chaussures: Baskets, Bottes et bottines, Sandales, Escarpins, Mocassins, Chaussures de ville, Chaussures de sport
-- Accessoires: Sacs, Ceintures, Chapeaux et bonnets, Écharpes et foulards, Bijoux, Lunettes, Accessoires cheveux
-- Bébé et enfant: Bodies, Pyjamas, Hauts, Bas, Robes et ensembles, Manteaux, Chaussures enfant, Accessoires enfant
+- Vêtements: Manteaux et vestes, Blousons et bombers, Doudounes et parkas, Trenchs et imperméables, Pulls et gilets, Sweats, Chemises et blouses, T-shirts et tops, Tops et débardeurs, Robes, Combinaisons, Jupes, Pantalons, Jeans, Chinos et toiles, Shorts, Tailleurs et costumes, Ensembles, Joggings et survêtements, Leggings, Sport, Maillots de bain, Sous-vêtements, Lingerie, Pyjamas
+- Chaussures: Baskets, Bottes et bottines, Sandales, Tongs et claquettes, Escarpins, Ballerines, Mocassins, Espadrilles, Chaussures de ville, Chaussures de sport, Chaussons
+- Accessoires: Sacs, Sacs à dos, Portefeuilles et maroquinerie, Ceintures, Chapeaux et bonnets, Écharpes et foulards, Gants, Bijoux, Montres, Lunettes, Cravates et nœuds papillon, Accessoires cheveux
+- Bébé et enfant: Vêtements de naissance, Bodies, Pyjamas, Hauts, Bas, Robes et ensembles, Manteaux, Sport enfant, Maillots de bain enfant, Sous-vêtements enfant, Chaussures enfant, Accessoires enfant
 Sois prudent: si marque, taille ou matière ne sont pas visibles, mets null.
 ${extraDetails?.trim() ? `Contexte fourni par l'utilisateur: ${extraDetails.trim()}` : ""}`;
 
