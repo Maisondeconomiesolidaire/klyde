@@ -1,6 +1,8 @@
-import { action, mutation, query } from "./_generated/server";
+import { action, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { requireAnyCrmPermission, requireCrmPermission } from "./lib";
 
 const CONDITIONS = [
   "Neuf avec étiquette",
@@ -225,7 +227,7 @@ export const list = query({
     status: v.optional(itemStatus),
   },
   handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+    await requireCrmPermission(ctx, "klyde:stock", "read");
     const items = args.status
       ? await ctx.db
           .query("klydeItems")
@@ -465,7 +467,7 @@ export const create = mutation({
     aiNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+    await requireCrmPermission(ctx, "klyde:stock", "create");
     if (args.photos.length === 0) throw new Error("Ajoutez au moins une photo.");
     const now = Date.now();
     return await ctx.db.insert("klydeItems", {
@@ -501,7 +503,15 @@ export const updateStatus = mutation({
     status: itemStatus,
   },
   handler: async (ctx, { id, status }) => {
-    await requireSignedIn(ctx);
+    // Mettre en ligne = publier sur la boutique ; sinon gestion de stock.
+    if (status === "en_ligne") {
+      await requireAnyCrmPermission(ctx, [
+        ["klyde:boutique", "manage"],
+        ["klyde:stock", "update"],
+      ]);
+    } else {
+      await requireCrmPermission(ctx, "klyde:stock", "update");
+    }
     await ctx.db.patch(id, { status, updatedAt: Date.now() });
   },
 });
@@ -512,7 +522,7 @@ export const updateTrackingNotes = mutation({
     trackingNotes: v.optional(v.string()),
   },
   handler: async (ctx, { id, trackingNotes }) => {
-    await requireSignedIn(ctx);
+    await requireCrmPermission(ctx, "klyde:stock", "update");
     await ctx.db.patch(id, {
       trackingNotes: cleanOptional(trackingNotes),
       updatedAt: Date.now(),
@@ -544,7 +554,7 @@ export const update = mutation({
     aiNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireSignedIn(ctx);
+    await requireCrmPermission(ctx, "klyde:stock", "update");
     if (args.photos.length === 0) throw new Error("Ajoutez au moins une photo.");
     await ctx.db.patch(args.id, {
       photos: args.photos,
@@ -574,8 +584,16 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("klydeItems") },
   handler: async (ctx, { id }) => {
-    await requireSignedIn(ctx);
+    await requireCrmPermission(ctx, "klyde:stock", "delete");
     await ctx.db.delete(id);
+  },
+});
+
+export const assertCanAnalyze = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await requireCrmPermission(ctx, "klyde:stock", "analyze");
+    return true;
   },
 });
 
@@ -585,7 +603,7 @@ export const analyzePhotos = action({
     extraDetails: v.optional(v.string()),
   },
   handler: async (ctx, { storageIds, extraDetails }) => {
-    await requireSignedIn(ctx);
+    await ctx.runQuery(internal.klyde.assertCanAnalyze, {});
     if (storageIds.length === 0) throw new Error("Aucune photo à analyser.");
 
     const apiKey = process.env.OPENAI_API_KEY;

@@ -709,7 +709,24 @@ function AppContent() {
   const updateStatus = useMutation(api.klyde.updateStatus);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const removeItem = useMutation(api.klyde.remove);
-  const items = useQuery(api.klyde.list, { searchText: searchText || undefined });
+  const access = useQuery(api.permissions.myAccess);
+  const can = (pageKey: string, action: string) => {
+    if (!access) return false;
+    if (access.isAdmin || access.bootstrapMode) return true;
+    return Boolean(
+      access.grants.find((grant) => grant.pageKey === pageKey)?.actions.includes(action),
+    );
+  };
+  const canRead = can("klyde:stock", "read");
+  const canCreate = can("klyde:stock", "create");
+  const canUpdate = can("klyde:stock", "update");
+  const canDelete = can("klyde:stock", "delete");
+  const canAnalyze = can("klyde:stock", "analyze");
+  const canPublish = canUpdate || can("klyde:boutique", "manage");
+  const items = useQuery(
+    api.klyde.list,
+    canRead ? { searchText: searchText || undefined } : "skip",
+  );
 
   const allItems = items ?? [];
   const visibleItems = useMemo(
@@ -1042,17 +1059,19 @@ function AppContent() {
     <div className="grid gap-2">
       {activeTab === "stock" ? (
         itemStatus(item) === "stock" || itemStatus(item) === "archive" ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              void moveItem(item._id, "en_ligne");
-            }}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--primary)] text-sm font-semibold text-white"
-          >
-            En ligne
-          </button>
-        ) : (
+          canPublish ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void moveItem(item._id, "en_ligne");
+              }}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--primary)] text-sm font-semibold text-white"
+            >
+              En ligne
+            </button>
+          ) : null
+        ) : canUpdate ? (
           <button
             type="button"
             onClick={(event) => {
@@ -1063,19 +1082,21 @@ function AppContent() {
           >
             Remettre en stock
           </button>
-        )
+        ) : null
       ) : null}
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          requestDelete(item);
-        }}
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium text-red-600"
-      >
-        <Trash2 className="h-4 w-4" />
-        Supprimer
-      </button>
+      {canDelete ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            requestDelete(item);
+          }}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium text-red-600"
+        >
+          <Trash2 className="h-4 w-4" />
+          Supprimer
+        </button>
+      ) : null}
     </div>
   );
 
@@ -1181,21 +1202,56 @@ function AppContent() {
         <div className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
           {[item.brand, item.gender, item.size].filter(Boolean).join(" · ") || item.subcategory || item.category}
         </div>
-        <div className="mt-2">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              requestDelete(item);
-            }}
-            className="rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-red-600"
-          >
-            Supprimer
-          </button>
-        </div>
+        {canDelete ? (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                requestDelete(item);
+              }}
+              className="rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-red-600"
+            >
+              Supprimer
+            </button>
+          </div>
+        ) : null}
       </div>
     </article>
   );
+
+  if (access === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--muted-foreground)]">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!canRead) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
+        <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+          <Logo />
+          <h2 className="mt-4 text-lg font-semibold">Accès au CRM Klyde refusé</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Votre compte n’a pas les droits nécessaires pour accéder au stock Klyde. Contactez un
+            administrateur pour obtenir un accès.
+          </p>
+          <div className="mt-5 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => goTo("/boutique")}
+              className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white"
+            >
+              Voir la boutique
+            </button>
+            <UserButton afterSignOutUrl="/" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -1228,13 +1284,15 @@ function AppContent() {
             {activeTab === "stock" ? "Stock" : "Suivi"}
           </h1>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={openNewArticle}
-              className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white sm:px-4"
-            >
-              Nouvel article
-            </button>
+            {canCreate ? (
+              <button
+                type="button"
+                onClick={openNewArticle}
+                className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white sm:px-4"
+              >
+                Nouvel article
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => goTo("/boutique")}
@@ -1548,14 +1606,16 @@ function AppContent() {
             </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => requestDelete(detailItem)}
-                className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium text-red-600"
-              >
-                Supprimer
-              </button>
-              {detailMode === "article" ? (
+              {canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => requestDelete(detailItem)}
+                  className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium text-red-600"
+                >
+                  Supprimer
+                </button>
+              ) : null}
+              {detailMode === "article" && canUpdate ? (
                 <button
                   type="button"
                   onClick={() => openEditArticle(detailItem)}
@@ -1686,7 +1746,8 @@ function AppContent() {
                 <button
                   type="button"
                   onClick={() => void runAnalysis()}
-                  disabled={Boolean(busy) || form.photos.length === 0}
+                  disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+                  title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {busy === "analysis" ? (
