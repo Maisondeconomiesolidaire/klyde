@@ -164,6 +164,7 @@ function AppContent() {
   const [searchText, setSearchText] = useState("");
   const [extraDetails, setExtraDetails] = useState("");
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
+  const [dropTarget, setDropTarget] = useState<KlydeStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -255,6 +256,7 @@ function AppContent() {
     const raw = event.dataTransfer.getData("text/plain");
     const id = (raw || draggedId) as Id<"klydeItems"> | null;
     setDraggedId(null);
+    setDropTarget(null);
     if (!id) return;
     void moveItem(id, status);
   }
@@ -479,6 +481,55 @@ function AppContent() {
     </article>
   );
 
+  const kanbanCard = (item: ListedItem) => (
+    <article
+      key={item._id}
+      draggable
+      onDragStart={(event) => {
+        setDraggedId(item._id);
+        event.dataTransfer.setData("text/plain", item._id);
+      }}
+      onDragEnd={() => {
+        setDraggedId(null);
+        setDropTarget(null);
+      }}
+      className="grid cursor-grab grid-cols-[56px_1fr] gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-2 active:cursor-grabbing"
+    >
+      <img
+        src={item.photoUrls[0] ?? ""}
+        alt=""
+        className="h-14 w-14 rounded-md bg-[var(--muted)] object-cover"
+      />
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="line-clamp-2 text-xs font-semibold leading-4">{item.title}</h3>
+          <span className="shrink-0 text-xs font-semibold">
+            {item.price != null ? `${item.price.toFixed(0)} €` : "-"}
+          </span>
+        </div>
+        <div className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
+          {[item.brand, item.size].filter(Boolean).join(" · ") || item.category}
+        </div>
+        <div className="mt-2 flex gap-1">
+          <button
+            type="button"
+            onClick={() => openEditArticle(item)}
+            className="rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium"
+          >
+            Modifier
+          </button>
+          <button
+            type="button"
+            onClick={() => void deleteArticle(item)}
+            className="rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-red-600"
+          >
+            Supprimer
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <aside className="hidden w-56 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:block">
@@ -613,9 +664,28 @@ function AppContent() {
                 return (
                   <section
                     key={column.status}
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      if (draggedId) setDropTarget(column.status);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      if (draggedId && dropTarget !== column.status) {
+                        setDropTarget(column.status);
+                      }
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setDropTarget((current) => (current === column.status ? null : current));
+                      }
+                    }}
                     onDrop={(event) => handleDrop(event, column.status)}
-                    className="min-h-72 rounded-md border border-[var(--border)] bg-[var(--card)]"
+                    className={cn(
+                      "min-h-72 rounded-md border bg-[var(--card)]",
+                      dropTarget === column.status
+                        ? "border-[var(--primary)]"
+                        : "border-[var(--border)]",
+                    )}
                   >
                     <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-3">
                       <h2 className="text-sm font-semibold">{column.label}</h2>
@@ -623,7 +693,12 @@ function AppContent() {
                         {columnItems.length}
                       </span>
                     </div>
-                    <div className="grid gap-3 p-3">
+                    <div className="grid gap-2 p-2">
+                      {dropTarget === column.status ? (
+                        <div className="rounded-md border border-dashed border-[var(--primary)] bg-[var(--muted)] px-3 py-2 text-center text-xs font-semibold text-[var(--primary)]">
+                          Relâchez
+                        </div>
+                      ) : null}
                       {columnItems.length === 0 ? (
                         <div className="rounded-md border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">
                           Glisse un article ici.
@@ -631,7 +706,7 @@ function AppContent() {
                       ) : (
                         columnItems.map((item) => (
                           <div key={item._id} className="grid gap-2">
-                            {articleCard(item, true)}
+                            {kanbanCard(item)}
                             {column.status === "envoye" ? (
                               <button
                                 type="button"
