@@ -132,7 +132,16 @@ function Field({
 }
 
 function Logo() {
-  return <div className="text-xl font-semibold text-[var(--logo)]">Klyde</div>;
+  return (
+    <picture className="block">
+      <source srcSet="/logo-dark.png" media="(prefers-color-scheme: dark)" />
+      <img
+        src="/logo-light.png"
+        alt="Klyde"
+        className="h-12 w-auto object-contain"
+      />
+    </picture>
+  );
 }
 
 function ArticleThumb({ item }: { item: ListedItem }) {
@@ -452,7 +461,9 @@ function AppContent() {
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <aside className="hidden w-56 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:block">
-        <Logo />
+        <div className="flex justify-center">
+          <Logo />
+        </div>
         <nav className="mt-8 grid gap-1">
           {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
