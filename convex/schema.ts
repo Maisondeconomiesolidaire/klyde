@@ -406,6 +406,7 @@ export default defineSchema({
     email: v.string(),
     name: v.optional(v.string()),
     active: v.boolean(),
+    role: v.optional(v.union(v.literal("client"), v.literal("staff"), v.literal("admin"))),
     grants: v.array(
       v.object({
         pageKey: v.string(),
