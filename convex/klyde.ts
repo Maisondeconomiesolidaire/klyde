@@ -90,7 +90,15 @@ type KlydeAIResult = {
 };
 
 async function requireSignedIn(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
+  auth: {
+    getUserIdentity: () => Promise<{
+      subject: string;
+      email?: string;
+      name?: string;
+      givenName?: string;
+      familyName?: string;
+    } | null>;
+  };
 }) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Connexion requise.");
@@ -226,6 +234,123 @@ export const list = query({
       : items;
 
     return Promise.all(filtered.map((item) => withPhotoUrls(ctx, item)));
+  },
+});
+
+export const listPublic = query({
+  args: {
+    searchText: v.optional(v.string()),
+    category: v.optional(v.string()),
+    gender: v.optional(v.string()),
+    size: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const items = await ctx.db
+      .query("klydeItems")
+      .withIndex("by_status", (q) => q.eq("status", "en_ligne"))
+      .order("desc")
+      .collect();
+
+    const search = args.searchText?.trim().toLowerCase();
+    const filtered = items.filter((item) => {
+      if (args.category && item.category !== args.category) return false;
+      if (args.gender && item.gender !== args.gender) return false;
+      if (args.size && item.size !== args.size) return false;
+      if (item.price == null) return false;
+      if (!search) return true;
+      return [
+        item.title,
+        item.description,
+        item.category,
+        item.subcategory,
+        item.brand,
+        item.size,
+        item.color,
+        item.material,
+        item.gender,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    });
+
+    return Promise.all(filtered.map((item) => withPhotoUrls(ctx, item)));
+  },
+});
+
+export const getManyPublic = query({
+  args: { ids: v.array(v.id("klydeItems")) },
+  handler: async (ctx, { ids }) => {
+    const uniqueIds = Array.from(new Set(ids)).slice(0, 40);
+    const items = await Promise.all(uniqueIds.map((id) => ctx.db.get(id)));
+    return Promise.all(
+      items
+        .filter((item): item is Doc<"klydeItems"> => Boolean(item))
+        .map((item) => withPhotoUrls(ctx, item)),
+    );
+  },
+});
+
+export const submitCartOrder = mutation({
+  args: {
+    itemIds: v.array(v.id("klydeItems")),
+    customer: v.object({
+      firstName: v.string(),
+      lastName: v.string(),
+      email: v.string(),
+      phone: v.string(),
+    }),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await requireSignedIn(ctx);
+    const uniqueIds = Array.from(new Set(args.itemIds));
+    if (uniqueIds.length === 0) throw new Error("Ajoutez au moins un article au panier.");
+
+    const items = await Promise.all(uniqueIds.map((id) => ctx.db.get(id)));
+    const available = items.filter(
+      (item): item is Doc<"klydeItems"> =>
+        item !== null && item.status === "en_ligne" && item.price != null,
+    );
+    if (available.length !== uniqueIds.length) {
+      throw new Error("Un article du panier n'est plus disponible.");
+    }
+
+    const total = available.reduce((sum, item) => sum + (item.price ?? 0), 0);
+    const now = Date.now();
+    const orderId = await ctx.db.insert("klydeOrders", {
+      itemIds: available.map((item) => item._id),
+      clerkId: identity.subject,
+      customer: {
+        firstName: args.customer.firstName.trim(),
+        lastName: args.customer.lastName.trim(),
+        email: args.customer.email.trim().toLowerCase(),
+        phone: args.customer.phone.trim(),
+      },
+      total: Math.round(total * 100) / 100,
+      status: "en_attente_paiement",
+      paymentMethod: "card",
+      note: cleanOptional(args.note),
+      createdAt: now,
+    });
+
+    await Promise.all(
+      available.map((item) =>
+        ctx.db.patch(item._id, {
+          status: "en_cours_envoi",
+          trackingNotes: [
+            item.trackingNotes,
+            `Commande boutique ${orderId} créée. Paiement carte en attente.`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          updatedAt: now,
+        }),
+      ),
+    );
+
+    return { orderId, total };
   },
 });
 

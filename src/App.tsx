@@ -1,7 +1,10 @@
-import { DragEvent, FormEvent, useMemo, useState } from "react";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { SignedIn, SignedOut, SignInButton, UserButton, useClerk, useUser } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
   ImagePlus,
   Kanban,
   LayoutGrid,
@@ -11,14 +14,18 @@ import {
   Pencil,
   Scissors,
   Search,
+  ShoppingBag,
+  ShoppingCart,
   Sparkles,
   Trash2,
   Trophy,
+  User,
   X,
 } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
+import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
 type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
@@ -26,6 +33,7 @@ type AppTab = "stock" | "suivi";
 type StockMode = "cards" | "list";
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
+type ShopRoute = "/boutique" | "/boutique/panier";
 
 type FormState = {
   photos: Id<"_storage">[];
@@ -51,6 +59,7 @@ type FormState = {
 };
 
 type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
+type ShopItem = ListedItem;
 
 const initialForm: FormState = {
   photos: [],
@@ -220,6 +229,26 @@ function inputClass() {
 function asNumber(value: string) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function formatPrice(value?: number) {
+  if (value == null) return "Prix sur demande";
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function currentRoute(): ShopRoute | "" {
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash === "/boutique/panier") return "/boutique/panier" satisfies ShopRoute;
+  if (hash === "/boutique") return "/boutique" satisfies ShopRoute;
+  return "";
+}
+
+function goTo(path: ShopRoute | "") {
+  window.location.hash = path;
 }
 
 function itemStatus(item: ListedItem): KlydeStatus {
@@ -820,14 +849,24 @@ function AppContent() {
 
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <aside className="hidden w-56 shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:block">
-        <div className="flex justify-center">
-          <Logo />
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:flex">
+        <div>
+          <div className="flex justify-center">
+            <Logo />
+          </div>
+          <nav className="mt-8 grid gap-1">
+            {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
+            {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
+          </nav>
         </div>
-        <nav className="mt-8 grid gap-1">
-          {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
-          {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
-        </nav>
+        <button
+          type="button"
+          onClick={() => goTo("/boutique")}
+          className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white"
+        >
+          <ShoppingBag className="h-4 w-4" />
+          Voir la boutique
+        </button>
       </aside>
 
       <div className="min-w-0 flex-1">
@@ -845,6 +884,13 @@ function AppContent() {
               className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white sm:px-4"
             >
               Nouvel article
+            </button>
+            <button
+              type="button"
+              onClick={() => goTo("/boutique")}
+              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm font-semibold md:hidden"
+            >
+              Boutique
             </button>
             <UserButton />
           </div>
@@ -1441,7 +1487,435 @@ function AppContent() {
   );
 }
 
+function BoutiqueHeader({ cartCount }: { cartCount: number }) {
+  return (
+    <header className="sticky top-0 z-30 border-b border-[#1f1b18]/10 bg-[#f6eee5]/95 backdrop-blur">
+      <div className="mx-auto flex min-h-20 max-w-[96rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <button type="button" onClick={() => goTo("/boutique")} className="shrink-0">
+          <img src="/logo-light.png" alt="Klyde" className="h-12 w-auto object-contain" />
+        </button>
+        <div className="hidden min-w-0 flex-1 items-center justify-center px-8 md:flex">
+          <div className="flex w-full max-w-xl items-center gap-3 border-b border-[#1f1b18] pb-2">
+            <Search className="h-5 w-5 text-[#1f1b18]/60" />
+            <span className="text-sm uppercase tracking-[0.34em] text-[#1f1b18]/45">
+              Recherche dans la sélection
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => goTo("")}
+            className="hidden rounded-full border border-[#1f1b18]/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18] sm:inline-flex"
+          >
+            CRM
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo("/boutique/panier")}
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#1f1b18]/15 text-[#1f1b18]"
+            aria-label="Voir le panier"
+          >
+            <ShoppingBag className="h-5 w-5" />
+            {cartCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[10px] font-bold text-white">
+                {cartCount}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      </div>
+      <nav className="border-t border-[#1f1b18]/10 bg-[#010102] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78">
+        <span className="mx-3">Nouveautés</span>
+        <span className="mx-3">Vestiaire</span>
+        <span className="mx-3">Pièces fortes</span>
+        <span className="mx-3">Sélection Klyde</span>
+      </nav>
+    </header>
+  );
+}
+
+function BoutiqueShell({ route }: { route: ShopRoute }) {
+  const cart = useKlydeCart();
+  return (
+    <div className="min-h-screen bg-[#f6eee5] text-[#1f1b18]">
+      <BoutiqueHeader cartCount={cart.count} />
+      {route === "/boutique/panier" ? <CartPage cart={cart} /> : <BoutiqueCatalog cart={cart} />}
+    </div>
+  );
+}
+
+function BoutiqueCatalog({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
+  const [gender, setGender] = useState("");
+  const [size, setSize] = useState("");
+  const items = useQuery(api.klyde.listPublic, {
+    searchText: search || undefined,
+    category: category || undefined,
+    gender: gender || undefined,
+    size: size || undefined,
+  });
+
+  const heroItem = items?.[0];
+
+  return (
+    <main>
+      <section className="grid min-h-[560px] border-b border-[#1f1b18]/10 lg:grid-cols-2">
+        <div className="flex items-center px-5 py-14 sm:px-8 lg:px-14">
+          <div className="max-w-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[var(--primary)]">
+              Collection privée
+            </p>
+            <h1 className="mt-6 font-serif text-5xl leading-[0.98] tracking-wide text-[#1f1b18] sm:text-7xl">
+              Vestiaire Klyde
+            </h1>
+            <p className="mt-6 max-w-md text-base leading-8 text-[#1f1b18]/68">
+              Une sélection textile haut de gamme, préparée pièce par pièce, disponible uniquement
+              parmi les articles déjà mis en ligne.
+            </p>
+            <div className="mt-9 flex flex-wrap gap-3">
+              <a
+                href="#catalogue"
+                className="inline-flex h-12 items-center justify-center rounded-full bg-[var(--primary)] px-7 text-sm font-semibold uppercase tracking-[0.16em] text-white"
+              >
+                Découvrir
+              </a>
+              <button
+                type="button"
+                onClick={() => goTo("/boutique/panier")}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#1f1b18]/18 px-6 text-sm font-semibold uppercase tracking-[0.16em]"
+              >
+                Panier
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="relative min-h-[420px] overflow-hidden bg-[#010102]">
+          {heroItem?.photoUrls[0] ? (
+            <img
+              src={heroItem.photoUrls[0]}
+              alt={heroItem.title}
+              className="h-full w-full object-cover opacity-90"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-white/30">
+              <ShoppingBag className="h-24 w-24" />
+            </div>
+          )}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-6 text-white sm:p-10">
+            <p className="text-xs uppercase tracking-[0.3em] text-white/70">Mise en avant</p>
+            <h2 className="mt-2 max-w-md text-3xl font-semibold">
+              {heroItem?.title ?? "La prochaine pièce Klyde arrive bientôt"}
+            </h2>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-3 border-b border-[#1f1b18]/10 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18]/70">
+        <div className="px-3 py-4">Pièces contrôlées</div>
+        <div className="border-x border-[#1f1b18]/10 px-3 py-4">Stock en ligne uniquement</div>
+        <div className="px-3 py-4">Panier sans compte</div>
+      </section>
+
+      <section id="catalogue" className="mx-auto max-w-[96rem] px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-8 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--primary)]">
+              Boutique
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+              Sélection disponible
+            </h2>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="h-11 rounded-none border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm outline-none focus:border-[var(--primary)]"
+              placeholder="Recherche"
+            />
+            <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm">
+              <option value="">Catégorie</option>
+              {categories.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select value={gender} onChange={(event) => setGender(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm">
+              <option value="">Genre</option>
+              {genders.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select value={size} onChange={(event) => setSize(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm">
+              <option value="">Taille</option>
+              {sizes.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {items === undefined ? (
+          <div className="flex items-center gap-2 py-16 text-sm text-[#1f1b18]/60">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Chargement de la boutique
+          </div>
+        ) : items.length === 0 ? (
+          <div className="border border-[#1f1b18]/10 px-6 py-16 text-center">
+            <p className="text-sm uppercase tracking-[0.22em] text-[#1f1b18]/50">
+              Aucun article en ligne pour le moment.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            {items.map((item) => <ShopProductCard key={item._id} item={item} cart={cart} />)}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function ShopProductCard({ item, cart }: { item: ShopItem; cart: ReturnType<typeof useKlydeCart> }) {
+  const inCart = cart.has(item._id);
+  return (
+    <article className="group">
+      <div className="relative aspect-[3/4] overflow-hidden bg-white">
+        {item.photoUrls[0] ? (
+          <img
+            src={item.photoUrls[0]}
+            alt={item.title}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[#1f1b18]/25">
+            <Package className="h-12 w-12" />
+          </div>
+        )}
+        <div className="absolute left-3 top-3 bg-[#f6eee5]/92 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
+          {item.category}
+        </div>
+      </div>
+      <div className="pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="line-clamp-2 text-sm font-semibold uppercase tracking-[0.08em]">
+              {item.title}
+            </h3>
+            <p className="mt-1 text-xs text-[#1f1b18]/55">
+              {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          <p className="shrink-0 text-sm font-semibold">{formatPrice(item.price)}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => (inCart ? goTo("/boutique/panier") : cart.add(item._id))}
+          className={cn(
+            "mt-4 inline-flex h-10 w-full items-center justify-center gap-2 border px-4 text-xs font-semibold uppercase tracking-[0.16em] transition",
+            inCart
+              ? "border-[#010102] bg-[#010102] text-white"
+              : "border-[#1f1b18]/18 hover:border-[var(--primary)] hover:text-[var(--primary)]",
+          )}
+        >
+          {inCart ? <Check className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
+          {inCart ? "Voir le panier" : "Ajouter au panier"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function CartPage({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
+  const { isSignedIn, user } = useUser();
+  const clerk = useClerk();
+  const submitOrder = useMutation(api.klyde.submitCartOrder);
+  const articles = useQuery(api.klyde.getManyPublic, {
+    ids: cart.ids as Id<"klydeItems">[],
+  });
+  const [customer, setCustomer] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
+  const [note, setNote] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setCustomer((current) => ({
+      ...current,
+      firstName: current.firstName || user.firstName || "",
+      lastName: current.lastName || user.lastName || "",
+      email: current.email || user.primaryEmailAddress?.emailAddress || "",
+    }));
+  }, [user]);
+
+  const availableArticles = (articles ?? []).filter((item) => item.status === "en_ligne");
+  const unavailableArticles = (articles ?? []).filter((item) => item.status !== "en_ligne");
+  const total = availableArticles.reduce((sum, item) => sum + (item.price ?? 0), 0);
+
+  async function validateCart(event: FormEvent) {
+    event.preventDefault();
+    if (!isSignedIn) {
+      clerk.openSignIn({});
+      return;
+    }
+    if (availableArticles.length === 0) return;
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const result = await submitOrder({
+        itemIds: availableArticles.map((item) => item._id),
+        customer,
+        note: note || undefined,
+      });
+      cart.clear();
+      setMessage(`Commande enregistrée. Paiement carte en attente (${formatPrice(result.total)}).`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Validation impossible.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (cart.count === 0 && !message) {
+    return (
+      <main className="mx-auto grid min-h-[70vh] max-w-xl place-items-center px-4 py-16 text-center">
+        <div>
+          <ShoppingBag className="mx-auto h-12 w-12 text-[var(--primary)]" />
+          <h1 className="mt-6 text-3xl font-semibold">Votre panier est vide</h1>
+          <p className="mt-3 text-sm leading-6 text-[#1f1b18]/60">
+            Ajoutez une pièce depuis la boutique pour préparer votre commande.
+          </p>
+          <button
+            type="button"
+            onClick={() => goTo("/boutique")}
+            className="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-6 text-sm font-semibold text-white"
+          >
+            Découvrir la boutique
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="mx-auto max-w-[96rem] px-4 py-8 sm:px-6 lg:px-8">
+      <button
+        type="button"
+        onClick={() => goTo("/boutique")}
+        className="mb-8 inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-[#1f1b18]/70"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Continuer mes achats
+      </button>
+
+      <div className="grid gap-10 lg:grid-cols-[1fr_430px] lg:items-start">
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--primary)]">
+            Votre sélection
+          </p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight">Panier</h1>
+
+          {articles === undefined ? (
+            <div className="mt-10 flex items-center gap-2 text-sm text-[#1f1b18]/60">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Chargement du panier
+            </div>
+          ) : (
+            <div className="mt-8 grid gap-4">
+              {availableArticles.map((item) => (
+                <article key={item._id} className="grid grid-cols-[96px_1fr_auto] gap-4 border-b border-[#1f1b18]/10 pb-4">
+                  <img src={item.photoUrls[0] ?? ""} alt="" className="h-24 w-24 bg-white object-cover" />
+                  <div className="min-w-0">
+                    <h2 className="font-semibold">{item.title}</h2>
+                    <p className="mt-1 text-sm text-[#1f1b18]/55">
+                      {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => cart.remove(item._id)}
+                      className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--primary)]"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                  <div className="text-right text-sm font-semibold">{formatPrice(item.price)}</div>
+                </article>
+              ))}
+              {unavailableArticles.map((item) => (
+                <article key={item._id} className="flex items-center justify-between border-b border-[#1f1b18]/10 py-3 text-sm text-[#1f1b18]/45">
+                  <span>{item.title} n’est plus disponible.</span>
+                  <button type="button" onClick={() => cart.remove(item._id)} className="font-semibold">
+                    Retirer
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <form onSubmit={validateCart} className="border border-[#1f1b18]/12 bg-[#010102] p-5 text-white sm:p-7">
+          <div className="flex items-center justify-between border-b border-white/14 pb-5">
+            <h2 className="text-xl font-semibold">Validation</h2>
+            <span className="text-xl font-semibold">{formatPrice(total)}</span>
+          </div>
+
+          <div className="mt-6 grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input required value={customer.firstName} onChange={(event) => setCustomer((current) => ({ ...current, firstName: event.target.value }))} className="h-11 border border-white/14 bg-white/5 px-3 text-sm outline-none focus:border-[var(--primary)]" placeholder="Prénom" />
+              <input required value={customer.lastName} onChange={(event) => setCustomer((current) => ({ ...current, lastName: event.target.value }))} className="h-11 border border-white/14 bg-white/5 px-3 text-sm outline-none focus:border-[var(--primary)]" placeholder="Nom" />
+            </div>
+            <input required type="email" value={customer.email} onChange={(event) => setCustomer((current) => ({ ...current, email: event.target.value }))} className="h-11 border border-white/14 bg-white/5 px-3 text-sm outline-none focus:border-[var(--primary)]" placeholder="Email" />
+            <input required value={customer.phone} onChange={(event) => setCustomer((current) => ({ ...current, phone: event.target.value }))} className="h-11 border border-white/14 bg-white/5 px-3 text-sm outline-none focus:border-[var(--primary)]" placeholder="Téléphone" />
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} className="min-h-24 border border-white/14 bg-white/5 px-3 py-3 text-sm outline-none focus:border-[var(--primary)]" placeholder="Note optionnelle" />
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting || availableArticles.length === 0}
+            className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-5 text-sm font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-50"
+          >
+            {isSignedIn ? <Check className="h-4 w-4" /> : <User className="h-4 w-4" />}
+            {submitting ? "Validation..." : isSignedIn ? "Valider le panier" : "Se connecter pour valider"}
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className="mt-3 h-12 w-full rounded-full border border-white/18 px-5 text-sm font-semibold uppercase tracking-[0.16em] text-white/35"
+          >
+            Paiement par carte
+          </button>
+          <p className="mt-3 text-xs leading-5 text-white/45">
+            Le paiement par carte sera activé après branchement Stripe.
+          </p>
+          {message ? (
+            <div className="mt-5 border border-white/14 bg-white/5 px-3 py-3 text-sm text-white/80">
+              {message}
+            </div>
+          ) : null}
+        </form>
+      </div>
+    </main>
+  );
+}
+
 export default function App() {
+  const [route, setRoute] = useState(() => currentRoute());
+
+  useEffect(() => {
+    function syncRoute() {
+      setRoute(currentRoute());
+    }
+    window.addEventListener("hashchange", syncRoute);
+    return () => window.removeEventListener("hashchange", syncRoute);
+  }, []);
+
+  if (route) return <BoutiqueShell route={route} />;
+
   return (
     <>
       <SignedOut>

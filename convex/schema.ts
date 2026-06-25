@@ -936,4 +936,23 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_createdAt", ["createdAt"])
     .index("by_sku", ["sku"]),
+
+  /** Klyde — commandes boutique créées après connexion client. */
+  klydeOrders: defineTable({
+    itemIds: v.array(v.id("klydeItems")),
+    clerkId: v.string(),
+    customer: v.object({
+      firstName: v.string(),
+      lastName: v.string(),
+      email: v.string(),
+      phone: v.string(),
+    }),
+    total: v.number(),
+    status: v.union(v.literal("en_attente_paiement"), v.literal("payee")),
+    paymentMethod: v.literal("card"),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_clerkId", ["clerkId"])
+    .index("by_createdAt", ["createdAt"]),
 });
