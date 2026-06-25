@@ -374,7 +374,27 @@ function AppContent() {
   );
 
   const actionButtons = (item: ListedItem) => (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid gap-2">
+      {activeTab === "stock" ? (
+        itemStatus(item) === "stock" || itemStatus(item) === "archive" ? (
+          <button
+            type="button"
+            onClick={() => void moveItem(item._id, "en_ligne")}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--primary)] text-sm font-semibold text-white"
+          >
+            En ligne
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void moveItem(item._id, "stock")}
+            className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border)] text-sm font-medium"
+          >
+            Remettre en stock
+          </button>
+        )
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
       <button
         type="button"
         onClick={() => openEditArticle(item)}
@@ -391,6 +411,7 @@ function AppContent() {
         <Trash2 className="h-4 w-4" />
         Supprimer
       </button>
+      </div>
     </div>
   );
 
@@ -545,7 +566,7 @@ function AppContent() {
                   onClick={() => setTrackingTab("process")}
                   className={cn("rounded px-3 py-2 text-sm", trackingTab === "process" && "bg-[var(--muted)]")}
                 >
-                  Process
+                  En cours
                 </button>
                 <button
                   type="button"
