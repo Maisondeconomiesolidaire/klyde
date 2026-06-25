@@ -278,9 +278,10 @@ export const listPublic = query({
       .collect();
 
     const search = args.searchText?.trim().toLowerCase();
+    const nfc = (value?: string | null) => value?.normalize("NFC").trim() ?? "";
     const filtered = items.filter((item) => {
-      if (args.category && item.category !== args.category) return false;
-      if (args.subcategory && item.subcategory !== args.subcategory) return false;
+      if (args.category && nfc(item.category) !== nfc(args.category)) return false;
+      if (args.subcategory && nfc(item.subcategory) !== nfc(args.subcategory)) return false;
       if (args.gender && item.gender !== args.gender) return false;
       if (args.size && item.size !== args.size) return false;
       if (item.price == null) return false;
@@ -303,6 +304,21 @@ export const listPublic = query({
     });
 
     return Promise.all(filtered.map((item) => withPhotoUrls(ctx, item)));
+  },
+});
+
+export const getFeatured = query({
+  args: {},
+  handler: async (ctx) => {
+    const featured = await ctx.db
+      .query("klydeItems")
+      .withIndex("by_featured", (q) => q.eq("featured", true))
+      .collect();
+    const online = featured.find(
+      (item) => item.status === "en_ligne" && item.price != null,
+    );
+    if (!online) return null;
+    return await withPhotoUrls(ctx, online);
   },
 });
 
@@ -474,8 +490,8 @@ export const create = mutation({
       photos: args.photos,
       title: args.title.trim() || "Article textile",
       description: args.description.trim(),
-      category: args.category.trim() || "Vêtements",
-      subcategory: cleanOptional(args.subcategory),
+      category: (args.category.trim() || "Vêtements").normalize("NFC"),
+      subcategory: cleanOptional(args.subcategory)?.normalize("NFC"),
       brand: cleanOptional(args.brand),
       size: cleanOptional(args.size),
       condition: args.condition.trim() || "Bon état",
@@ -560,8 +576,8 @@ export const update = mutation({
       photos: args.photos,
       title: args.title.trim() || "Article textile",
       description: args.description.trim(),
-      category: args.category.trim() || "Vêtements",
-      subcategory: cleanOptional(args.subcategory),
+      category: (args.category.trim() || "Vêtements").normalize("NFC"),
+      subcategory: cleanOptional(args.subcategory)?.normalize("NFC"),
       brand: cleanOptional(args.brand),
       size: cleanOptional(args.size),
       condition: args.condition.trim() || "Bon état",
@@ -586,6 +602,31 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     await requireCrmPermission(ctx, "klyde:stock", "delete");
     await ctx.db.delete(id);
+  },
+});
+
+export const setFeatured = mutation({
+  args: { id: v.id("klydeItems") },
+  handler: async (ctx, { id }) => {
+    await requireAnyCrmPermission(ctx, [
+      ["klyde:boutique", "manage"],
+      ["klyde:stock", "update"],
+    ]);
+    const target = await ctx.db.get(id);
+    if (!target) throw new Error("Article introuvable.");
+
+    const currentlyFeatured = await ctx.db
+      .query("klydeItems")
+      .withIndex("by_featured", (q) => q.eq("featured", true))
+      .collect();
+
+    const now = Date.now();
+    // Un seul article peut être mis en avant : on retire les autres.
+    for (const item of currentlyFeatured) {
+      if (item._id !== id) await ctx.db.patch(item._id, { featured: false, updatedAt: now });
+    }
+    await ctx.db.patch(id, { featured: !target.featured, updatedAt: now });
+    return { featured: !target.featured };
   },
 });
 

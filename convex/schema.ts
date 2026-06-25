@@ -931,12 +931,14 @@ export default defineSchema({
     aiConfidence: v.optional(v.number()),
     aiNotes: v.optional(v.string()),
     trackingNotes: v.optional(v.string()),
+    featured: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
     .index("by_createdAt", ["createdAt"])
-    .index("by_sku", ["sku"]),
+    .index("by_sku", ["sku"])
+    .index("by_featured", ["featured"]),
 
   /** Klyde — commandes boutique créées après connexion client. */
   klydeOrders: defineTable({

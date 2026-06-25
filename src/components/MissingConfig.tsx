@@ -2,7 +2,7 @@ export function MissingConfig({ missing }: { missing: string[] }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6">
       <div className="w-full max-w-xl rounded-lg border border-[var(--border)] bg-[var(--card)] p-8 shadow-sm">
-        <div className="text-lg font-semibold text-[var(--foreground)]">Klyde</div>
+        <div className="text-lg font-semibold text-[var(--foreground)]">Klyd</div>
         <h1 className="mt-6 text-2xl font-semibold text-[var(--foreground)]">
           Configuration requise
         </h1>

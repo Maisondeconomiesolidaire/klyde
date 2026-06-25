@@ -16,9 +16,11 @@ import {
   Pencil,
   Scissors,
   Search,
+  ShieldCheck,
   ShoppingBag,
   ShoppingCart,
   Sparkles,
+  Star,
   Trash2,
   Trophy,
   User,
@@ -319,6 +321,7 @@ function currentRoute(): ShopRoute | "" {
   const hash = window.location.hash.replace(/^#/, "");
   if (hash === "/boutique/panier") return "/boutique/panier" satisfies ShopRoute;
   if (hash === "/boutique/favoris") return "/boutique/favoris" satisfies ShopRoute;
+  if (hash.startsWith("/boutique/recherche")) return hash;
   if (hash.startsWith("/boutique/categorie/")) return hash;
   if (hash.startsWith("/boutique/article/")) return hash;
   if (hash === "/boutique") return "/boutique" satisfies ShopRoute;
@@ -350,6 +353,47 @@ function parseShopCategory(route: ShopRoute) {
 
 function parseShopArticleId(route: ShopRoute) {
   return decodeURIComponent(route.replace("/boutique/article/", ""));
+}
+
+function parseSearchQuery(route: ShopRoute) {
+  const [, queryString = ""] = route.split("?");
+  return new URLSearchParams(queryString).get("q") ?? "";
+}
+
+const normalizeKey = (value: string) => value.normalize("NFC").trim().toLowerCase();
+
+/** Retrouve la clé canonique d'une catégorie, tolérante aux accents/casse (NFC/NFD). */
+function findCategoryKey(value: string): keyof typeof categoryTree | null {
+  const target = normalizeKey(value);
+  return (
+    (categories.find((key) => normalizeKey(key) === target) as keyof typeof categoryTree) ?? null
+  );
+}
+
+/** Champs de fiche pertinents selon la catégorie / sous-catégorie. */
+const NO_SIZE_SUBCATEGORIES = new Set([
+  "Sacs",
+  "Sacs à dos",
+  "Portefeuilles et maroquinerie",
+  "Bijoux",
+  "Montres",
+  "Lunettes",
+  "Écharpes et foulards",
+  "Cravates et nœuds papillon",
+  "Accessoires cheveux",
+]);
+const NO_MATERIAL_SUBCATEGORIES = new Set(["Montres", "Lunettes", "Bijoux"]);
+
+function fieldRelevant(field: "size" | "material", category: string, subcategory: string) {
+  if (field === "size") {
+    if (category === "Accessoires") {
+      // Seuls quelques accessoires ont une taille (ceinture, gants, bonnet...).
+      return ["Ceintures", "Gants", "Chapeaux et bonnets"].includes(subcategory);
+    }
+    return !NO_SIZE_SUBCATEGORIES.has(subcategory);
+  }
+  if (field === "material") return !NO_MATERIAL_SUBCATEGORIES.has(subcategory);
+  return true;
 }
 
 function itemStatus(item: ListedItem): KlydeStatus {
@@ -662,7 +706,7 @@ function Logo() {
       <source srcSet="/logo-dark.png" media="(prefers-color-scheme: dark)" />
       <img
         src="/logo-light.png"
-        alt="Klyde"
+        alt="Klyd"
         className="h-12 w-auto object-contain"
       />
     </picture>
@@ -709,6 +753,7 @@ function AppContent() {
   const updateStatus = useMutation(api.klyde.updateStatus);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const removeItem = useMutation(api.klyde.remove);
+  const setFeatured = useMutation(api.klyde.setFeatured);
   const access = useQuery(api.permissions.myAccess);
   const can = (pageKey: string, action: string) => {
     if (!access) return false;
@@ -777,7 +822,7 @@ function AppContent() {
       previewUrls: item.photoUrls,
       title: item.title,
       description: item.description,
-      category: item.category,
+      category: findCategoryKey(item.category) ?? item.category,
       subcategory: item.subcategory ?? "",
       brand: item.brand ?? "",
       size: item.size ?? "",
@@ -855,6 +900,14 @@ function AppContent() {
 
   async function moveItem(id: Id<"klydeItems">, status: KlydeStatus) {
     await updateStatus({ id, status });
+  }
+
+  async function toggleFeatured(id: Id<"klydeItems">) {
+    try {
+      await setFeatured({ id });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Mise en avant impossible.");
+    }
   }
 
   async function saveTrackingNotes() {
@@ -1009,10 +1062,10 @@ function AppContent() {
         category: form.category,
         subcategory: form.subcategory || undefined,
         brand: form.brand || undefined,
-        size: form.size || undefined,
+        size: (showSizeField && form.size) || undefined,
         condition: form.condition,
         color: form.color || undefined,
-        material: form.material || undefined,
+        material: (showMaterialField && form.material) || undefined,
         price: asNumber(form.price),
         parcelSize: form.parcelSize || undefined,
         gender: form.gender || undefined,
@@ -1036,10 +1089,10 @@ function AppContent() {
     }
   }
 
-  const formSubcategories =
-    form.category in categoryTree
-      ? categoryTree[form.category as keyof typeof categoryTree]
-      : [];
+  const formCategoryKey = findCategoryKey(form.category);
+  const formSubcategories = formCategoryKey ? categoryTree[formCategoryKey] : [];
+  const showSizeField = fieldRelevant("size", form.category, form.subcategory);
+  const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
   const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => (
     <button
@@ -1083,6 +1136,24 @@ function AppContent() {
             Remettre en stock
           </button>
         ) : null
+      ) : null}
+      {canPublish && item.status === "en_ligne" ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            void toggleFeatured(item._id);
+          }}
+          className={cn(
+            "inline-flex h-9 items-center justify-center gap-2 rounded-md border text-sm font-medium",
+            item.featured
+              ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+              : "border-[var(--border)]",
+          )}
+        >
+          <Star className={cn("h-4 w-4", item.featured && "fill-[var(--primary)]")} />
+          {item.featured ? "En avant" : "Mettre en avant"}
+        </button>
       ) : null}
       {canDelete ? (
         <button
@@ -1233,9 +1304,9 @@ function AppContent() {
       <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
         <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6 text-center">
           <Logo />
-          <h2 className="mt-4 text-lg font-semibold">Accès au CRM Klyde refusé</h2>
+          <h2 className="mt-4 text-lg font-semibold">Accès au CRM Klyd refusé</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            Votre compte n’a pas les droits nécessaires pour accéder au stock Klyde. Contactez un
+            Votre compte n’a pas les droits nécessaires pour accéder au stock Klyd. Contactez un
             administrateur pour obtenir un accès.
           </p>
           <div className="mt-5 flex items-center justify-center gap-3">
@@ -1816,16 +1887,18 @@ function AppContent() {
                 <Field label="Marque">
                   <input className={inputClass()} value={form.brand} onChange={(event) => update("brand", event.target.value)} />
                 </Field>
-                <Field label="Taille">
-                  <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
-                    <option value="">À préciser</option>
-                    {sizes.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {showSizeField ? (
+                  <Field label="Taille">
+                    <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
+                      <option value="">À préciser</option>
+                      {sizes.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : null}
                 <Field label="État">
                   <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
                     {conditions.map((condition) => (
@@ -1843,16 +1916,18 @@ function AppContent() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Matière">
-                  <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
-                    <option value="">À préciser</option>
-                    {materials.map((material) => (
-                      <option key={material} value={material}>
-                        {material}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {showMaterialField ? (
+                  <Field label="Matière">
+                    <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                      <option value="">À préciser</option>
+                      {materials.map((material) => (
+                        <option key={material} value={material}>
+                          {material}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : null}
                 <Field label="Prix">
                   <input className={inputClass()} inputMode="decimal" value={form.price} onChange={(event) => update("price", event.target.value)} />
                 </Field>
@@ -2016,7 +2091,7 @@ function MenuLatest({
           }}
           className="flex aspect-[3/2] w-full items-center justify-center bg-white"
         >
-          <img src="/logo-light.png" alt="Klyde" className="h-full w-full object-contain p-10" />
+          <img src="/logo-light.png" alt="Klyd" className="h-full w-full object-contain p-10" />
         </button>
       )}
       <button
@@ -2033,22 +2108,34 @@ function MenuLatest({
   );
 }
 
-function BoutiqueHeader({ cartCount }: { cartCount: number }) {
+function BoutiqueHeader() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [query, setQuery] = useState(() => parseSearchQuery(currentRoute()));
+
+  function submitSearch(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    goTo(`/boutique/recherche?q=${encodeURIComponent(trimmed)}`);
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-[#1f1b18]/10 bg-[#f6eee5]/95 backdrop-blur">
       <div className="mx-auto flex min-h-20 max-w-[96rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <button type="button" onClick={() => goTo("/boutique")} className="shrink-0">
-          <img src="/logo-light.png" alt="Klyde" className="h-12 w-auto object-contain" />
+          <img src="/logo-light.png" alt="Klyd" className="h-12 w-auto object-contain" />
         </button>
-        <div className="hidden min-w-0 flex-1 items-center justify-center px-8 md:flex">
+        <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 items-center justify-center px-8 md:flex">
           <div className="flex w-full max-w-xl items-center gap-3 border-b border-[#1f1b18] pb-2">
-            <Search className="h-5 w-5 text-[#1f1b18]/60" />
-            <span className="text-sm uppercase tracking-[0.34em] text-[#1f1b18]/45">
-              Recherche dans la sélection
-            </span>
+            <Search className="h-5 w-5 shrink-0 text-[#1f1b18]/60" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Recherche dans la sélection"
+              className="w-full bg-transparent text-sm tracking-[0.04em] text-[#1f1b18] outline-none placeholder:uppercase placeholder:tracking-[0.34em] placeholder:text-[#1f1b18]/45"
+            />
           </div>
-        </div>
+        </form>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -2064,19 +2151,6 @@ function BoutiqueHeader({ cartCount }: { cartCount: number }) {
             aria-label="Voir les favoris"
           >
             <Heart className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => goTo("/boutique/panier")}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#1f1b18]/15 text-[#1f1b18]"
-            aria-label="Voir le panier"
-          >
-            <ShoppingBag className="h-5 w-5" />
-            {cartCount > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[10px] font-bold text-white">
-                {cartCount}
-              </span>
-            ) : null}
           </button>
         </div>
       </div>
@@ -2181,19 +2255,24 @@ function BoutiqueShell({ route }: { route: ShopRoute }) {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const wishlist = useShopWishlist(() => setAuthModalOpen(true));
   return (
-    <div className="min-h-screen bg-[#f6eee5] text-[#1f1b18]">
-      <BoutiqueHeader cartCount={cart.count} />
-      {route === "/boutique/panier" ? (
-        <CartPage cart={cart} />
-      ) : route === "/boutique/favoris" ? (
-        <WishlistPage cart={cart} wishlist={wishlist} onAuthRequired={() => setAuthModalOpen(true)} />
-      ) : route.startsWith("/boutique/categorie/") ? (
-        <CategoryPage route={route} cart={cart} wishlist={wishlist} />
-      ) : route.startsWith("/boutique/article/") ? (
-        <ProductDetailPage route={route} cart={cart} wishlist={wishlist} />
-      ) : (
-        <BoutiqueCatalog cart={cart} wishlist={wishlist} />
-      )}
+    <div className="flex min-h-screen flex-col bg-[#f6eee5] text-[#1f1b18]">
+      <BoutiqueHeader />
+      <div className="flex-1">
+        {route === "/boutique/panier" ? (
+          <CartPage cart={cart} />
+        ) : route === "/boutique/favoris" ? (
+          <WishlistPage cart={cart} wishlist={wishlist} onAuthRequired={() => setAuthModalOpen(true)} />
+        ) : route.startsWith("/boutique/recherche") ? (
+          <SearchPage route={route} cart={cart} wishlist={wishlist} />
+        ) : route.startsWith("/boutique/categorie/") ? (
+          <CategoryPage route={route} cart={cart} wishlist={wishlist} />
+        ) : route.startsWith("/boutique/article/") ? (
+          <ProductDetailPage route={route} cart={cart} wishlist={wishlist} />
+        ) : (
+          <BoutiqueCatalog cart={cart} wishlist={wishlist} />
+        )}
+      </div>
+      <BoutiqueFooter />
       {authModalOpen ? <AuthRequiredModal onClose={() => setAuthModalOpen(false)} /> : null}
     </div>
   );
@@ -2216,8 +2295,7 @@ function BoutiqueCatalog({
     gender: gender || undefined,
     size: size || undefined,
   });
-
-  const heroItem = items?.[0];
+  const heroItem = useQuery(api.klyde.getFeatured, {});
 
   return (
     <main>
@@ -2228,7 +2306,7 @@ function BoutiqueCatalog({
               Collection privée
             </p>
             <h1 className="mt-6 font-serif text-5xl leading-[0.98] tracking-wide text-[#1f1b18] sm:text-7xl">
-              Catalogue Klyde
+              Catalogue Klyd
             </h1>
             <p className="mt-6 max-w-md text-base leading-8 text-[#1f1b18]/68">
               Une sélection textile haut de gamme, préparée pièce par pièce, disponible uniquement
@@ -2241,23 +2319,30 @@ function BoutiqueCatalog({
               >
                 Découvrir
               </a>
-              <button
-                type="button"
-                onClick={() => goTo("/boutique/panier")}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#1f1b18]/18 px-6 text-sm font-semibold uppercase tracking-[0.16em]"
-              >
-                Panier
-                <ArrowRight className="h-4 w-4" />
-              </button>
+              {heroItem ? (
+                <button
+                  type="button"
+                  onClick={() => goTo(`/boutique/article/${heroItem._id}`)}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#1f1b18]/18 px-6 text-sm font-semibold uppercase tracking-[0.16em]"
+                >
+                  Voir la pièce
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
-        <div className="relative min-h-[420px] overflow-hidden bg-[#010102]">
+        <button
+          type="button"
+          onClick={() => heroItem && goTo(`/boutique/article/${heroItem._id}`)}
+          disabled={!heroItem}
+          className="group relative block min-h-[420px] overflow-hidden bg-[#010102] text-left"
+        >
           {heroItem?.photoUrls[0] ? (
             <img
               src={heroItem.photoUrls[0]}
               alt={heroItem.title}
-              className="h-full w-full object-cover opacity-90"
+              className="h-full w-full object-cover opacity-90 transition duration-700 group-hover:scale-[1.03]"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-white/30">
@@ -2267,16 +2352,34 @@ function BoutiqueCatalog({
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-6 text-white sm:p-10">
             <p className="text-xs uppercase tracking-[0.3em] text-white/70">Mise en avant</p>
             <h2 className="mt-2 max-w-md text-3xl font-semibold">
-              {heroItem?.title ?? "La prochaine pièce Klyde arrive bientôt"}
+              {heroItem?.title ?? "La prochaine pièce Klyd arrive bientôt"}
             </h2>
+            {heroItem ? (
+              <p className="mt-2 text-sm font-semibold text-white/85">{formatPrice(heroItem.price)}</p>
+            ) : null}
           </div>
-        </div>
+        </button>
       </section>
 
-      <section className="grid grid-cols-3 border-b border-[#1f1b18]/10 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18]/70">
-        <div className="px-3 py-4">Pièces contrôlées</div>
-        <div className="border-x border-[#1f1b18]/10 px-3 py-4">Stock en ligne uniquement</div>
-        <div className="px-3 py-4">Panier sans compte</div>
+      <section className="grid grid-cols-2 border-b border-[#1f1b18]/10 text-xs font-semibold uppercase tracking-[0.16em] text-[#1f1b18]/75 sm:grid-cols-4">
+        {[
+          "Produits de qualité",
+          "Pièces uniques sélectionnées",
+          "Expédition soignée 48h",
+          "Paiement 100% sécurisé",
+        ].map((label, index) => (
+          <div
+            key={label}
+            className={cn(
+              "flex items-center justify-center gap-2 px-3 py-4 text-center",
+              index < 3 && "border-[#1f1b18]/10 sm:border-r",
+              index < 2 && "border-b sm:border-b-0",
+            )}
+          >
+            <Check className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+            {label}
+          </div>
+        ))}
       </section>
 
       <section id="catalogue" className="mx-auto max-w-[96rem] px-4 py-10 sm:px-6 lg:px-8">
@@ -2409,6 +2512,121 @@ function ShopProductCard({
   );
 }
 
+function SearchPage({
+  route,
+  cart,
+  wishlist,
+}: {
+  route: ShopRoute;
+  cart: ReturnType<typeof useKlydeCart>;
+  wishlist: ReturnType<typeof useShopWishlist>;
+}) {
+  const query = parseSearchQuery(route);
+  const items = useQuery(api.klyde.listPublic, query ? { searchText: query } : "skip");
+
+  return (
+    <main className="mx-auto max-w-[96rem] px-4 py-10 sm:px-6 lg:px-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--primary)]">
+        Recherche
+      </p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+        Résultats pour « {query} »
+      </h1>
+
+      {!query ? (
+        <p className="mt-10 text-sm text-[#1f1b18]/60">Saisissez un terme de recherche.</p>
+      ) : items === undefined ? (
+        <div className="mt-10 flex items-center gap-2 text-sm text-[#1f1b18]/60">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Recherche en cours
+        </div>
+      ) : items.length === 0 ? (
+        <div className="mt-10 border border-[#1f1b18]/10 px-6 py-16 text-center">
+          <p className="text-sm uppercase tracking-[0.2em] text-[#1f1b18]/50">
+            Aucun article ne correspond à votre recherche.
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[#1f1b18]/45">
+            {items.length} article{items.length > 1 ? "s" : ""}
+          </p>
+          <div className="mt-8 grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            {items.map((item) => (
+              <ShopProductCard key={item._id} item={item} cart={cart} wishlist={wishlist} />
+            ))}
+          </div>
+        </>
+      )}
+    </main>
+  );
+}
+
+function BoutiqueFooter() {
+  const { isSignedIn } = useUser();
+  const access = useQuery(api.permissions.myAccess, isSignedIn ? {} : "skip");
+  const hasKlydAccess = Boolean(
+    access &&
+      (access.isAdmin ||
+        access.bootstrapMode ||
+        access.grants.some((grant) => grant.pageKey.startsWith("klyde:"))),
+  );
+
+  return (
+    <footer className="mt-16 border-t border-[#1f1b18]/10 bg-[#010102] text-white/75">
+      <div className="mx-auto grid max-w-[96rem] gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr_1fr] lg:px-8">
+        <div>
+          <img src="/logo-light.png" alt="Klyd" className="h-10 w-auto object-contain" />
+          <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">
+            Sélection textile haut de gamme, préparée pièce par pièce.
+          </p>
+        </div>
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">Boutique</h3>
+          <ul className="mt-4 grid gap-2 text-sm">
+            <li>
+              <button type="button" onClick={() => goTo("/boutique")} className="hover:text-white">
+                Nouveautés
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={() => goTo("/boutique/favoris")} className="hover:text-white">
+                Favoris
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={() => goTo("/boutique/panier")} className="hover:text-white">
+                Panier
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">Maison</h3>
+          <ul className="mt-4 grid gap-2 text-sm">
+            <li className="text-white/55">Klyd — collection privée</li>
+            {hasKlydAccess ? (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => goTo("")}
+                  className="inline-flex items-center gap-2 font-semibold text-white hover:text-[var(--primary)]"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Espace professionnel
+                </button>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      </div>
+      <div className="border-t border-white/10 px-4 py-5 text-center text-xs text-white/40">
+        © {new Date().getFullYear()} Klyd
+      </div>
+    </footer>
+  );
+}
+
 function CategoryPage({
   route,
   cart,
@@ -2480,7 +2698,7 @@ function CategoryPage({
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">{pageTitle}</h1>
           <p className="mx-auto mt-5 max-w-4xl text-sm leading-7 text-[#1f1b18]/65">
-            Découvrez les pièces Klyde actuellement disponibles dans cette sélection. Chaque article
+            Découvrez les pièces Klyd actuellement disponibles dans cette sélection. Chaque article
             est contrôlé, photographié et préparé pour une expérience boutique haut de gamme.
           </p>
           <div className="mx-auto mt-6 flex max-w-5xl flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-semibold underline underline-offset-4">
@@ -2634,28 +2852,33 @@ function ProductDetailPage({
         ) : null}
       </div>
 
-      <section className="grid gap-8 lg:grid-cols-[92px_minmax(0,1fr)_430px]">
-        <div className="hidden grid-cols-1 gap-3 lg:grid">
-          {item.photoUrls.map((url, index) => (
-            <button
-              key={url}
-              type="button"
-              onClick={() => setSelectedPhoto(index)}
-              className={cn("aspect-[3/4] bg-white", selectedPhoto === index && "ring-2 ring-[#010102]")}
-            >
-              <img src={url} alt="" className="h-full w-full object-cover" />
-            </button>
-          ))}
-        </div>
+      <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_430px]">
+        <div className="grid gap-3 lg:grid-cols-[92px_minmax(0,1fr)] lg:items-start">
+          <div className="hidden grid-cols-1 content-start gap-3 lg:grid">
+            {item.photoUrls.map((url, index) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => setSelectedPhoto(index)}
+                className={cn(
+                  "aspect-[3/4] overflow-hidden bg-white",
+                  selectedPhoto === index && "ring-2 ring-[#010102]",
+                )}
+              >
+                <img src={url} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
 
-        <div className="relative min-h-[520px] bg-white">
-          {photo ? (
-            <img src={photo} alt={item.title} className="h-full max-h-[820px] w-full object-contain" />
-          ) : (
-            <div className="flex h-full min-h-[520px] items-center justify-center text-[#1f1b18]/25">
-              <Package className="h-16 w-16" />
-            </div>
-          )}
+          <div className="relative min-h-[520px] bg-white">
+            {photo ? (
+              <img src={photo} alt={item.title} className="h-full max-h-[820px] w-full object-contain" />
+            ) : (
+              <div className="flex h-full min-h-[520px] items-center justify-center text-[#1f1b18]/25">
+                <Package className="h-16 w-16" />
+              </div>
+            )}
+          </div>
         </div>
 
         <aside className="lg:pl-8">
@@ -2685,16 +2908,6 @@ function ProductDetailPage({
           </div>
 
           <p className="mt-7 text-sm leading-7 text-[#1f1b18]/64">{item.description}</p>
-
-          {item.color ? (
-            <div className="mt-7">
-              <p className="text-sm text-[#1f1b18]/58">Couleur : {item.color}</p>
-              <div className="mt-3 flex gap-3">
-                <span className="h-11 w-11 rounded-full border border-[#1f1b18]/25 bg-white" />
-                <span className="h-11 w-11 rounded-full border border-[#1f1b18]/25 bg-[#010102]" />
-              </div>
-            </div>
-          ) : null}
 
           <div className="mt-7">
             <div className="flex items-center justify-between text-sm text-[#1f1b18]/58">
@@ -2730,7 +2943,7 @@ function ProductDetailPage({
           </button>
 
           <div className="mt-6 bg-[#e9aaa0] p-5 text-sm">
-            <p className="font-semibold uppercase tracking-[0.12em]">Service Klyde</p>
+            <p className="font-semibold uppercase tracking-[0.12em]">Service Klyd</p>
             <ul className="mt-4 grid gap-3 text-[#1f1b18]/76">
               <li>✓ Article contrôlé avant publication</li>
               <li>✓ Panier sauvegardé sans compte</li>
