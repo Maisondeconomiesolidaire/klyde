@@ -5,6 +5,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  Heart,
   ImagePlus,
   Kanban,
   LayoutGrid,
@@ -33,7 +35,7 @@ type AppTab = "stock" | "suivi";
 type StockMode = "cards" | "list";
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
-type ShopRoute = "/boutique" | "/boutique/panier";
+type ShopRoute = string;
 
 type FormState = {
   photos: Id<"_storage">[];
@@ -216,6 +218,51 @@ const materials = [
   "Mélange",
 ];
 
+const shopMenus = [
+  {
+    label: "Femme",
+    category: "Vêtements",
+    groups: [
+      ["Prêt-à-porter", ["Manteaux et vestes", "Pulls et gilets", "Chemises et blouses", "T-shirts et tops", "Robes", "Jupes", "Pantalons", "Jeans"]],
+      ["Essentiels", ["Sweats", "Ensembles", "Sport", "Maillots de bain", "Pyjamas", "Sous-vêtements"]],
+      ["Silhouettes", ["Pièces de soirée", "Tailoring", "Denim", "Minimalisme", "Chic quotidien"]],
+    ],
+  },
+  {
+    label: "Homme",
+    category: "Vêtements",
+    gender: "Homme",
+    groups: [
+      ["Vêtements", ["Manteaux et vestes", "Pulls et gilets", "Chemises et blouses", "T-shirts et tops", "Pantalons", "Jeans", "Shorts"]],
+      ["Style", ["Sport", "Sweats", "Ensembles", "Casual premium", "Classiques"]],
+    ],
+  },
+  {
+    label: "Chaussures",
+    category: "Chaussures",
+    groups: [
+      ["Catégories", ["Baskets", "Bottes et bottines", "Sandales", "Escarpins", "Mocassins", "Chaussures de ville", "Chaussures de sport"]],
+      ["Sélection", ["Cuir", "Daim", "Soirée", "Quotidien", "Intemporel"]],
+    ],
+  },
+  {
+    label: "Accessoires",
+    category: "Accessoires",
+    groups: [
+      ["Accessoires", ["Sacs", "Ceintures", "Chapeaux et bonnets", "Écharpes et foulards", "Bijoux", "Lunettes", "Accessoires cheveux"]],
+      ["Éditions", ["Pièces signature", "Cadeaux", "Nouveautés", "Couleurs fortes"]],
+    ],
+  },
+  {
+    label: "Enfant",
+    category: "Bébé et enfant",
+    groups: [
+      ["Bébé et enfant", ["Bodies", "Pyjamas", "Hauts", "Bas", "Robes et ensembles", "Manteaux", "Chaussures enfant", "Accessoires enfant"]],
+      ["Âges", ["Bébé", "2-6 ans", "8-12 ans", "Adolescent"]],
+    ],
+  },
+] as const;
+
 const processColumns: Array<{ status: KlydeStatus; label: string }> = [
   { status: "en_ligne", label: "En ligne" },
   { status: "en_cours_envoi", label: "En cours d’envoi" },
@@ -243,12 +290,37 @@ function formatPrice(value?: number) {
 function currentRoute(): ShopRoute | "" {
   const hash = window.location.hash.replace(/^#/, "");
   if (hash === "/boutique/panier") return "/boutique/panier" satisfies ShopRoute;
+  if (hash.startsWith("/boutique/categorie/")) return hash;
+  if (hash.startsWith("/boutique/article/")) return hash;
   if (hash === "/boutique") return "/boutique" satisfies ShopRoute;
   return "";
 }
 
 function goTo(path: ShopRoute | "") {
   window.location.hash = path;
+}
+
+function shopCategoryPath(category: string, subcategory?: string, gender?: string) {
+  const params = new URLSearchParams();
+  if (subcategory) params.set("sous-categorie", subcategory);
+  if (gender) params.set("genre", gender);
+  const query = params.toString();
+  return `/boutique/categorie/${encodeURIComponent(category)}${query ? `?${query}` : ""}`;
+}
+
+function parseShopCategory(route: ShopRoute) {
+  const raw = route.replace("/boutique/categorie/", "");
+  const [categoryPart, queryString = ""] = raw.split("?");
+  const params = new URLSearchParams(queryString);
+  return {
+    category: decodeURIComponent(categoryPart || ""),
+    subcategory: params.get("sous-categorie") ?? "",
+    gender: params.get("genre") ?? "",
+  };
+}
+
+function parseShopArticleId(route: ShopRoute) {
+  return decodeURIComponent(route.replace("/boutique/article/", ""));
 }
 
 function itemStatus(item: ListedItem): KlydeStatus {
@@ -1487,7 +1559,46 @@ function AppContent() {
   );
 }
 
+function useShopWishlist(onAuthRequired: () => void) {
+  const { isSignedIn } = useUser();
+  const ids = useQuery(api.klyde.myWishlistIds, isSignedIn ? {} : "skip");
+  const toggleMutation = useMutation(api.klyde.toggleWishlist);
+  const idSet = useMemo(() => new Set((ids ?? []).map(String)), [ids]);
+
+  async function toggle(itemId: string) {
+    if (!isSignedIn) {
+      onAuthRequired();
+      return;
+    }
+    await toggleMutation({ itemId: itemId as Id<"klydeItems"> });
+  }
+
+  return { idSet, toggle };
+}
+
+function AuthRequiredModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+      <section className="w-full max-w-sm bg-[#f6eee5] p-6 text-center text-[#1f1b18] shadow-[0_28px_80px_rgba(0,0,0,0.22)]">
+        <Heart className="mx-auto h-8 w-8 text-[var(--primary)]" />
+        <h2 className="mt-4 text-xl font-semibold">Connexion requise</h2>
+        <p className="mt-2 text-sm leading-6 text-[#1f1b18]/62">
+          Vous devez être connecté pour effectuer cette action.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-6 h-10 rounded-full bg-[#010102] px-6 text-sm font-semibold text-white"
+        >
+          Compris
+        </button>
+      </section>
+    </div>
+  );
+}
+
 function BoutiqueHeader({ cartCount }: { cartCount: number }) {
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   return (
     <header className="sticky top-0 z-30 border-b border-[#1f1b18]/10 bg-[#f6eee5]/95 backdrop-blur">
       <div className="mx-auto flex min-h-20 max-w-[96rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -1525,11 +1636,89 @@ function BoutiqueHeader({ cartCount }: { cartCount: number }) {
           </button>
         </div>
       </div>
-      <nav className="border-t border-[#1f1b18]/10 bg-[#010102] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78">
-        <span className="mx-3">Nouveautés</span>
-        <span className="mx-3">Vestiaire</span>
-        <span className="mx-3">Pièces fortes</span>
-        <span className="mx-3">Sélection Klyde</span>
+      <nav
+        onMouseLeave={() => setOpenMenu(null)}
+        className="relative border-t border-[#1f1b18]/10 bg-[#010102] px-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78"
+      >
+        <div className="mx-auto flex max-w-[96rem] items-center justify-center gap-1 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => goTo("/boutique")}
+            className="shrink-0 px-4 py-4 hover:bg-white/10"
+          >
+            Nouveautés
+          </button>
+          {shopMenus.map((menu) => (
+            <button
+              key={menu.label}
+              type="button"
+              onMouseEnter={() => setOpenMenu(menu.label)}
+              onClick={() =>
+                goTo(shopCategoryPath(menu.category, undefined, "gender" in menu ? menu.gender : undefined))
+              }
+              className="inline-flex shrink-0 items-center gap-1 px-4 py-4 hover:bg-white/10"
+            >
+              {menu.label}
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          ))}
+          <button type="button" className="shrink-0 px-4 py-4 hover:bg-white/10">
+            Sélection premium
+          </button>
+        </div>
+        {openMenu ? (
+          <div className="absolute inset-x-0 top-full z-40 border-b border-[#1f1b18]/10 bg-[#f6eee5] px-6 py-8 text-left text-[#1f1b18] shadow-[0_24px_60px_rgba(0,0,0,0.08)]">
+            <div className="mx-auto grid max-w-[96rem] gap-8 md:grid-cols-[repeat(4,minmax(0,1fr))_240px]">
+              {shopMenus
+                .find((menu) => menu.label === openMenu)
+                ?.groups.map(([title, links]) => (
+                  <div key={title}>
+                    <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18]/70">
+                      {title}
+                    </h3>
+                    <div className="grid gap-3">
+                      {links.map((link) => {
+                        const menu = shopMenus.find((item) => item.label === openMenu);
+                        const validSubcategory =
+                          menu &&
+                          menu.category in categoryTree &&
+                          (categoryTree[menu.category as keyof typeof categoryTree] as readonly string[]).includes(link);
+                        return (
+                          <button
+                            key={link}
+                            type="button"
+                            onClick={() => {
+                              const menu = shopMenus.find((item) => item.label === openMenu);
+                              if (!menu) return;
+                              goTo(
+                                shopCategoryPath(
+                                  menu.category,
+                                  validSubcategory ? link : undefined,
+                                  "gender" in menu ? menu.gender : undefined,
+                                ),
+                              );
+                              setOpenMenu(null);
+                            }}
+                            className="text-left text-sm normal-case tracking-normal text-[#1f1b18]/68 hover:text-[var(--primary)]"
+                          >
+                            {link}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              <div className="hidden md:block">
+                <div className="aspect-[3/4] bg-white">
+                  <img src="/logo-light.png" alt="Klyde" className="h-full w-full object-contain p-10" />
+                </div>
+                <p className="mt-3 text-center text-sm normal-case tracking-normal text-[#1f1b18]/58">
+                  {openMenu}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </nav>
     </header>
   );
@@ -1537,15 +1726,32 @@ function BoutiqueHeader({ cartCount }: { cartCount: number }) {
 
 function BoutiqueShell({ route }: { route: ShopRoute }) {
   const cart = useKlydeCart();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const wishlist = useShopWishlist(() => setAuthModalOpen(true));
   return (
     <div className="min-h-screen bg-[#f6eee5] text-[#1f1b18]">
       <BoutiqueHeader cartCount={cart.count} />
-      {route === "/boutique/panier" ? <CartPage cart={cart} /> : <BoutiqueCatalog cart={cart} />}
+      {route === "/boutique/panier" ? (
+        <CartPage cart={cart} />
+      ) : route.startsWith("/boutique/categorie/") ? (
+        <CategoryPage route={route} cart={cart} wishlist={wishlist} />
+      ) : route.startsWith("/boutique/article/") ? (
+        <ProductDetailPage route={route} cart={cart} wishlist={wishlist} />
+      ) : (
+        <BoutiqueCatalog cart={cart} wishlist={wishlist} />
+      )}
+      {authModalOpen ? <AuthRequiredModal onClose={() => setAuthModalOpen(false)} /> : null}
     </div>
   );
 }
 
-function BoutiqueCatalog({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
+function BoutiqueCatalog({
+  cart,
+  wishlist,
+}: {
+  cart: ReturnType<typeof useKlydeCart>;
+  wishlist: ReturnType<typeof useShopWishlist>;
+}) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [gender, setGender] = useState("");
@@ -1568,7 +1774,7 @@ function BoutiqueCatalog({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
               Collection privée
             </p>
             <h1 className="mt-6 font-serif text-5xl leading-[0.98] tracking-wide text-[#1f1b18] sm:text-7xl">
-              Vestiaire Klyde
+              Catalogue Klyde
             </h1>
             <p className="mt-6 max-w-md text-base leading-8 text-[#1f1b18]/68">
               Une sélection textile haut de gamme, préparée pièce par pièce, disponible uniquement
@@ -1664,7 +1870,9 @@ function BoutiqueCatalog({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {items.map((item) => <ShopProductCard key={item._id} item={item} cart={cart} />)}
+            {items.map((item) => (
+              <ShopProductCard key={item._id} item={item} cart={cart} wishlist={wishlist} />
+            ))}
           </div>
         )}
       </section>
@@ -1672,19 +1880,38 @@ function BoutiqueCatalog({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
   );
 }
 
-function ShopProductCard({ item, cart }: { item: ShopItem; cart: ReturnType<typeof useKlydeCart> }) {
+function ShopProductCard({
+  item,
+  cart,
+  wishlist,
+}: {
+  item: ShopItem;
+  cart: ReturnType<typeof useKlydeCart>;
+  wishlist: ReturnType<typeof useShopWishlist>;
+}) {
   const inCart = cart.has(item._id);
+  const saved = wishlist.idSet.has(item._id);
   return (
     <article className="group">
       <div className="relative aspect-[3/4] overflow-hidden bg-white">
+        <button
+          type="button"
+          onClick={() => void wishlist.toggle(item._id)}
+          className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f6eee5]/90 text-[#1f1b18] shadow-sm"
+          aria-label="Sauvegarder l’article"
+        >
+          <Heart className={cn("h-5 w-5", saved && "fill-[var(--primary)] text-[var(--primary)]")} />
+        </button>
         {item.photoUrls[0] ? (
-          <img
-            src={item.photoUrls[0]}
-            alt={item.title}
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"
-          />
+          <button type="button" onClick={() => goTo(`/boutique/article/${item._id}`)} className="block h-full w-full">
+            <img
+              src={item.photoUrls[0]}
+              alt={item.title}
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"
+            />
+          </button>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[#1f1b18]/25">
             <Package className="h-12 w-12" />
@@ -1697,9 +1924,13 @@ function ShopProductCard({ item, cart }: { item: ShopItem; cart: ReturnType<type
       <div className="pt-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="line-clamp-2 text-sm font-semibold uppercase tracking-[0.08em]">
+            <button
+              type="button"
+              onClick={() => goTo(`/boutique/article/${item._id}`)}
+              className="line-clamp-2 text-left text-sm font-semibold uppercase tracking-[0.08em] hover:text-[var(--primary)]"
+            >
               {item.title}
-            </h3>
+            </button>
             <p className="mt-1 text-xs text-[#1f1b18]/55">
               {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
             </p>
@@ -1721,6 +1952,313 @@ function ShopProductCard({ item, cart }: { item: ShopItem; cart: ReturnType<type
         </button>
       </div>
     </article>
+  );
+}
+
+function CategoryPage({
+  route,
+  cart,
+  wishlist,
+}: {
+  route: ShopRoute;
+  cart: ReturnType<typeof useKlydeCart>;
+  wishlist: ReturnType<typeof useShopWishlist>;
+}) {
+  const parsed = parseShopCategory(route);
+  const [size, setSize] = useState("");
+  const [color, setColor] = useState("");
+  const [material, setMaterial] = useState("");
+  const items = useQuery(api.klyde.listPublic, {
+    category: parsed.category || undefined,
+    subcategory: parsed.subcategory || undefined,
+    gender: parsed.gender || undefined,
+    size: size || undefined,
+    searchText: color || material ? [color, material].filter(Boolean).join(" ") : undefined,
+  });
+  const categorySubcategories =
+    parsed.category in categoryTree
+      ? categoryTree[parsed.category as keyof typeof categoryTree]
+      : [];
+  const pageTitle = parsed.subcategory || parsed.category || "Catalogue";
+
+  return (
+    <main>
+      <section className="border-b border-[#1f1b18]/10 px-4 py-8 text-center sm:px-6">
+        <div className="mx-auto max-w-[96rem]">
+          <div className="mb-5 text-left text-sm italic text-[#1f1b18]/55">
+            <button type="button" onClick={() => goTo("/boutique")} className="hover:text-[var(--primary)]">
+              Accueil
+            </button>
+            <span className="mx-2">›</span>
+            <span>{parsed.category}</span>
+            {parsed.subcategory ? (
+              <>
+                <span className="mx-2">›</span>
+                <span>{parsed.subcategory}</span>
+              </>
+            ) : null}
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight">{pageTitle}</h1>
+          <p className="mx-auto mt-5 max-w-4xl text-sm leading-7 text-[#1f1b18]/65">
+            Découvrez les pièces Klyde actuellement disponibles dans cette sélection. Chaque article
+            est contrôlé, photographié et préparé pour une expérience boutique haut de gamme.
+          </p>
+          <div className="mx-auto mt-6 flex max-w-5xl flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-semibold underline underline-offset-4">
+            {categorySubcategories.map((subcategory) => (
+              <button
+                key={subcategory}
+                type="button"
+                onClick={() => goTo(shopCategoryPath(parsed.category, subcategory, parsed.gender))}
+                className={cn(
+                  "text-[#1f1b18]/72 hover:text-[var(--primary)]",
+                  parsed.subcategory === subcategory && "text-[var(--primary)]",
+                )}
+              >
+                {subcategory}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[96rem] px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-3 border-b border-[#1f1b18]/10 pb-6 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
+          <select value={color} onChange={(event) => setColor(event.target.value)} className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm">
+            <option value="">Couleur</option>
+            {colors.map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <select value={material} onChange={(event) => setMaterial(event.target.value)} className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm">
+            <option value="">Matière</option>
+            {materials.map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <select value={size} onChange={(event) => setSize(event.target.value)} className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm">
+            <option value="">Taille</option>
+            {sizes.map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <select disabled className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm text-[#1f1b18]/45">
+            <option>Marques</option>
+          </select>
+          <select disabled className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm text-[#1f1b18]/45">
+            <option>Style</option>
+          </select>
+          <select disabled className="h-11 border border-[#1f1b18]/12 bg-[#f6eee5] px-3 text-sm text-[#1f1b18]/45 lg:w-56">
+            <option>Trier : pertinence</option>
+          </select>
+        </div>
+
+        {items === undefined ? (
+          <div className="flex items-center gap-2 py-16 text-sm text-[#1f1b18]/60">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Chargement des articles
+          </div>
+        ) : items.length === 0 ? (
+          <div className="py-16 text-center text-sm uppercase tracking-[0.2em] text-[#1f1b18]/45">
+            Aucun article dans cette catégorie.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-x-5 gap-y-10 pt-8 sm:grid-cols-2 lg:grid-cols-4">
+            {items.map((item) => (
+              <ShopProductCard key={item._id} item={item} cart={cart} wishlist={wishlist} />
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function ProductDetailPage({
+  route,
+  cart,
+  wishlist,
+}: {
+  route: ShopRoute;
+  cart: ReturnType<typeof useKlydeCart>;
+  wishlist: ReturnType<typeof useShopWishlist>;
+}) {
+  const itemId = parseShopArticleId(route);
+  const item = useQuery(api.klyde.getPublic, { id: itemId as Id<"klydeItems"> });
+  const [selectedPhoto, setSelectedPhoto] = useState(0);
+
+  useEffect(() => {
+    setSelectedPhoto(0);
+  }, [itemId]);
+
+  if (item === undefined) {
+    return (
+      <main className="flex min-h-[70vh] items-center justify-center gap-2 text-sm text-[#1f1b18]/60">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Chargement de l’article
+      </main>
+    );
+  }
+
+  if (!item) {
+    return (
+      <main className="mx-auto grid min-h-[70vh] max-w-xl place-items-center px-4 text-center">
+        <div>
+          <h1 className="text-2xl font-semibold">Article indisponible</h1>
+          <button
+            type="button"
+            onClick={() => goTo("/boutique")}
+            className="mt-6 rounded-full bg-[var(--primary)] px-6 py-3 text-sm font-semibold text-white"
+          >
+            Retour boutique
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  const saved = wishlist.idSet.has(item._id);
+  const inCart = cart.has(item._id);
+  const photo = item.photoUrls[selectedPhoto] ?? item.photoUrls[0] ?? "";
+  const detailRows = [
+    ["Catégorie", item.category],
+    ["Sous-catégorie", item.subcategory],
+    ["Marque", item.brand],
+    ["État", item.condition],
+    ["Matière", item.material],
+    ["Référence", item.sku],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+
+  return (
+    <main className="mx-auto max-w-[96rem] px-4 py-7 sm:px-6 lg:px-8">
+      <div className="mb-6 text-sm italic text-[#1f1b18]/55">
+        <button type="button" onClick={() => goTo("/boutique")} className="hover:text-[var(--primary)]">
+          Accueil
+        </button>
+        <span className="mx-2">›</span>
+        <button
+          type="button"
+          onClick={() => goTo(shopCategoryPath(item.category, item.subcategory, item.gender))}
+          className="hover:text-[var(--primary)]"
+        >
+          {item.category}
+        </button>
+        {item.subcategory ? (
+          <>
+            <span className="mx-2">›</span>
+            <span>{item.subcategory}</span>
+          </>
+        ) : null}
+      </div>
+
+      <section className="grid gap-8 lg:grid-cols-[92px_minmax(0,1fr)_430px]">
+        <div className="hidden grid-cols-1 gap-3 lg:grid">
+          {item.photoUrls.map((url, index) => (
+            <button
+              key={url}
+              type="button"
+              onClick={() => setSelectedPhoto(index)}
+              className={cn("aspect-[3/4] bg-white", selectedPhoto === index && "ring-2 ring-[#010102]")}
+            >
+              <img src={url} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+
+        <div className="relative min-h-[520px] bg-white">
+          {photo ? (
+            <img src={photo} alt={item.title} className="h-full max-h-[820px] w-full object-contain" />
+          ) : (
+            <div className="flex h-full min-h-[520px] items-center justify-center text-[#1f1b18]/25">
+              <Package className="h-16 w-16" />
+            </div>
+          )}
+        </div>
+
+        <aside className="lg:pl-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-[#1f1b18]/50">
+                {item.subcategory || item.category}
+              </p>
+              <h1 className="mt-3 text-xl font-medium uppercase leading-7 tracking-[0.06em] text-[#1f1b18]/76">
+                {item.title}
+              </h1>
+            </div>
+            <button
+              type="button"
+              onClick={() => void wishlist.toggle(item._id)}
+              className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_16px_40px_rgba(0,0,0,0.08)]"
+              aria-label="Sauvegarder l’article"
+            >
+              <Heart className={cn("h-6 w-6", saved && "fill-[var(--primary)] text-[var(--primary)]")} />
+            </button>
+          </div>
+
+          <div className="mt-7 flex items-center gap-4">
+            <span className="text-2xl font-semibold text-[var(--primary)]">
+              {formatPrice(item.price)}
+            </span>
+          </div>
+
+          <p className="mt-7 text-sm leading-7 text-[#1f1b18]/64">{item.description}</p>
+
+          {item.color ? (
+            <div className="mt-7">
+              <p className="text-sm text-[#1f1b18]/58">Couleur : {item.color}</p>
+              <div className="mt-3 flex gap-3">
+                <span className="h-11 w-11 rounded-full border border-[#1f1b18]/25 bg-white" />
+                <span className="h-11 w-11 rounded-full border border-[#1f1b18]/25 bg-[#010102]" />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-7">
+            <div className="flex items-center justify-between text-sm text-[#1f1b18]/58">
+              <span>Taille : {item.size || "Unique"}</span>
+              <span className="underline underline-offset-4">Guide des tailles</span>
+            </div>
+            <div className="mt-3 grid grid-cols-5 gap-2">
+              {(item.size ? [item.size] : ["Unique"]).map((sizeValue) => (
+                <button
+                  type="button"
+                  key={sizeValue}
+                  className="h-12 border border-[#1f1b18]/15 bg-[#f6eee5] text-sm"
+                >
+                  {sizeValue}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => (inCart ? goTo("/boutique/panier") : cart.add(item._id))}
+            className="mt-6 h-14 w-full bg-[#8f4a43] text-sm font-semibold uppercase tracking-[0.16em] text-white"
+          >
+            {inCart ? "Voir le panier" : "Ajouter au panier"}
+          </button>
+          <button
+            type="button"
+            disabled
+            className="mt-3 h-14 w-full bg-[#010102] text-sm font-semibold uppercase tracking-[0.16em] text-white/45"
+          >
+            Paiement par carte
+          </button>
+
+          <div className="mt-6 bg-[#e9aaa0] p-5 text-sm">
+            <p className="font-semibold uppercase tracking-[0.12em]">Service Klyde</p>
+            <ul className="mt-4 grid gap-3 text-[#1f1b18]/76">
+              <li>✓ Article contrôlé avant publication</li>
+              <li>✓ Panier sauvegardé sans compte</li>
+              <li>✓ Validation sécurisée après connexion</li>
+            </ul>
+          </div>
+
+          <dl className="mt-6 grid gap-3 border-t border-[#1f1b18]/10 pt-5 text-sm">
+            {detailRows.map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-4">
+                <dt className="text-[#1f1b18]/50">{label}</dt>
+                <dd className="text-right font-medium">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </aside>
+      </section>
+    </main>
   );
 }
 

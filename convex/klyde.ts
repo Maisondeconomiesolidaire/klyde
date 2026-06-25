@@ -241,6 +241,7 @@ export const listPublic = query({
   args: {
     searchText: v.optional(v.string()),
     category: v.optional(v.string()),
+    subcategory: v.optional(v.string()),
     gender: v.optional(v.string()),
     size: v.optional(v.string()),
   },
@@ -254,6 +255,7 @@ export const listPublic = query({
     const search = args.searchText?.trim().toLowerCase();
     const filtered = items.filter((item) => {
       if (args.category && item.category !== args.category) return false;
+      if (args.subcategory && item.subcategory !== args.subcategory) return false;
       if (args.gender && item.gender !== args.gender) return false;
       if (args.size && item.size !== args.size) return false;
       if (item.price == null) return false;
@@ -279,6 +281,15 @@ export const listPublic = query({
   },
 });
 
+export const getPublic = query({
+  args: { id: v.id("klydeItems") },
+  handler: async (ctx, { id }) => {
+    const item = await ctx.db.get(id);
+    if (!item || item.status !== "en_ligne" || item.price == null) return null;
+    return await withPhotoUrls(ctx, item);
+  },
+});
+
 export const getManyPublic = query({
   args: { ids: v.array(v.id("klydeItems")) },
   handler: async (ctx, { ids }) => {
@@ -289,6 +300,45 @@ export const getManyPublic = query({
         .filter((item): item is Doc<"klydeItems"> => Boolean(item))
         .map((item) => withPhotoUrls(ctx, item)),
     );
+  },
+});
+
+export const myWishlistIds = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await requireSignedIn(ctx);
+    const rows = await ctx.db
+      .query("klydeWishlists")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+      .collect();
+    return rows.map((row) => row.itemId);
+  },
+});
+
+export const toggleWishlist = mutation({
+  args: { itemId: v.id("klydeItems") },
+  handler: async (ctx, { itemId }) => {
+    const identity = await requireSignedIn(ctx);
+    const item = await ctx.db.get(itemId);
+    if (!item || item.status !== "en_ligne") throw new Error("Article indisponible.");
+
+    const existing = await ctx.db
+      .query("klydeWishlists")
+      .withIndex("by_clerkId_itemId", (q) =>
+        q.eq("clerkId", identity.subject).eq("itemId", itemId),
+      )
+      .unique();
+    if (existing) {
+      await ctx.db.delete(existing._id);
+      return { saved: false };
+    }
+
+    await ctx.db.insert("klydeWishlists", {
+      clerkId: identity.subject,
+      itemId,
+      createdAt: Date.now(),
+    });
+    return { saved: true };
   },
 });
 

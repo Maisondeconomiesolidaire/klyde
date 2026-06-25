@@ -955,4 +955,14 @@ export default defineSchema({
   })
     .index("by_clerkId", ["clerkId"])
     .index("by_createdAt", ["createdAt"]),
+
+  /** Klyde — wishlist client. */
+  klydeWishlists: defineTable({
+    clerkId: v.string(),
+    itemId: v.id("klydeItems"),
+    createdAt: v.number(),
+  })
+    .index("by_clerkId", ["clerkId"])
+    .index("by_clerkId_itemId", ["clerkId", "itemId"])
+    .index("by_itemId", ["itemId"]),
 });
