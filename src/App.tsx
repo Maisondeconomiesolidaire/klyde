@@ -1393,8 +1393,8 @@ function AppContent() {
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
-          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex w-full max-w-md items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3">
+          <div className="mb-5 grid gap-3 lg:grid-cols-[minmax(280px,420px)_1fr] lg:items-start">
+            <div className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3">
               <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
               <input
                 className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -1405,75 +1405,79 @@ function AppContent() {
             </div>
 
             {activeTab === "stock" ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => {
-                    setCategoryFilter(event.target.value);
-                    setSubcategoryFilter("all");
-                  }}
-                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                >
-                  <option value="all">Toutes catégories</option>
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={subcategoryFilter}
-                  onChange={(event) => setSubcategoryFilter(event.target.value)}
-                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                >
-                  <option value="all">Toutes sous-catégories</option>
-                  {availableSubcategories.map((subcategory) => (
-                    <option key={subcategory} value={subcategory}>
-                      {subcategory}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={genderFilter}
-                  onChange={(event) => setGenderFilter(event.target.value)}
-                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                >
-                  <option value="all">Tous genres</option>
-                  {genders.map((gender) => (
-                    <option key={gender} value={gender}>
-                      {gender}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={sizeFilter}
-                  onChange={(event) => setSizeFilter(event.target.value)}
-                  className="h-10 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                >
-                  <option value="all">Toutes tailles</option>
-                  {sizes.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-                <div className="inline-flex rounded-md border border-[var(--border)] p-1">
-                  <button
-                    type="button"
-                    onClick={() => setStockMode("cards")}
-                    className={cn("rounded px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
-                    aria-label="Mode cards"
+              <div className="grid gap-2">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1.45fr_0.95fr]">
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => {
+                      setCategoryFilter(event.target.value);
+                      setSubcategoryFilter("all");
+                    }}
+                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                   >
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStockMode("list")}
-                    className={cn("rounded px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
-                    aria-label="Mode liste"
+                    <option value="all">Toutes catégories</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={subcategoryFilter}
+                    onChange={(event) => setSubcategoryFilter(event.target.value)}
+                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                   >
-                    <List className="h-4 w-4" />
-                  </button>
+                    <option value="all">Toutes sous-catégories</option>
+                    {availableSubcategories.map((subcategory) => (
+                      <option key={subcategory} value={subcategory}>
+                        {subcategory}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={genderFilter}
+                    onChange={(event) => setGenderFilter(event.target.value)}
+                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+                  >
+                    <option value="all">Tous genres</option>
+                    {genders.map((gender) => (
+                      <option key={gender} value={gender}>
+                        {gender}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={sizeFilter}
+                    onChange={(event) => setSizeFilter(event.target.value)}
+                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm sm:w-64"
+                  >
+                    <option value="all">Toutes tailles</option>
+                    {sizes.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="inline-flex rounded-md border border-[var(--border)] p-1">
+                    <button
+                      type="button"
+                      onClick={() => setStockMode("cards")}
+                      className={cn("rounded px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
+                      aria-label="Mode cards"
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockMode("list")}
+                      className={cn("rounded px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
+                      aria-label="Mode liste"
+                    >
+                      <List className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
