@@ -6,8 +6,6 @@ import { requireAnyCrmPermission, requireCrmPermission } from "./lib";
 
 const vehicleKind = v.union(
   v.literal("utilitaire"),
-  v.literal("camionnette"),
-  v.literal("camion"),
   v.literal("voiture"),
 );
 

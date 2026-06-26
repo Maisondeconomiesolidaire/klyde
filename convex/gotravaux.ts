@@ -7,8 +7,6 @@ const ROOMS_PAGE_KEY = "mesoutils:salles";
 
 const vehicleKind = v.union(
   v.literal("utilitaire"),
-  v.literal("camionnette"),
-  v.literal("camion"),
   v.literal("voiture"),
 );
 
