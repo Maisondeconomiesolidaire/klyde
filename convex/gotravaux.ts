@@ -10,6 +10,10 @@ const vehicleKind = v.union(
   v.literal("voiture"),
 );
 
+function normalizeVehicleKind(kind: string) {
+  return kind === "voiture" ? "voiture" : "utilitaire";
+}
+
 const site = v.union(v.literal("60"), v.literal("76"));
 const taskPriority = v.union(v.literal("low"), v.literal("medium"), v.literal("high"));
 const taskStatus = v.union(
@@ -49,6 +53,7 @@ export const listVehicles = query({
     return await Promise.all(
       vehicles.map(async (vehicle) => ({
         ...vehicle,
+        kind: normalizeVehicleKind(vehicle.kind),
         photoUrl: vehicle.photo ? await ctx.storage.getUrl(vehicle.photo) : vehicle.photoUrl,
         openTasksCount: openTasksByVehicle.get(String(vehicle._id)) ?? 0,
       })),

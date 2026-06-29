@@ -189,7 +189,8 @@ const livraisonDetails = v.object({
   ),
 });
 
-export default defineSchema({
+export default defineSchema(
+  {
   articles: defineTable({
     title: v.string(),
     description: v.string(),
@@ -308,6 +309,8 @@ export default defineSchema({
     plate: v.optional(v.string()),
     kind: v.union(
       v.literal("utilitaire"),
+      v.literal("camionnette"),
+      v.literal("camion"),
       v.literal("voiture"),
     ),
     photo: v.optional(v.id("_storage")),
@@ -743,10 +746,33 @@ export default defineSchema({
   postLikes: defineTable({
     postId: v.id("posts"),
     clerkId: v.string(),
+    actorName: v.optional(v.string()),
+    actorImageUrl: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_postId", ["postId"])
     .index("by_post_and_user", ["postId", "clerkId"]),
+
+  mesoutilsNotifications: defineTable({
+    recipientClerkId: v.string(),
+    kind: v.union(
+      v.literal("room_reservation_confirmed"),
+      v.literal("vehicle_reservation_decided"),
+      v.literal("new_direct_message"),
+      v.literal("post_liked"),
+      v.literal("post_commented"),
+      v.literal("deal_interest"),
+      v.literal("vehicle_reservation_request"),
+    ),
+    title: v.string(),
+    body: v.optional(v.string()),
+    actorName: v.optional(v.string()),
+    href: v.optional(v.string()),
+    read: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_recipient_createdAt", ["recipientClerkId", "createdAt"])
+    .index("by_recipient_read_createdAt", ["recipientClerkId", "read", "createdAt"]),
 
   /** Salles réservables (réservation immédiate si le créneau est libre). */
   rooms: defineTable({
@@ -775,6 +801,10 @@ export default defineSchema({
     bookedByName: v.optional(v.string()),
     bookedForClerkId: v.optional(v.string()),
     title: v.string(),
+    // Type d'usage de la salle (réunion, atelier, formation…).
+    usageType: v.optional(v.string()),
+    // Nombre de personnes attendues (plafonné à la capacité de la salle).
+    attendees: v.optional(v.number()),
     start: v.number(),
     end: v.number(),
     notes: v.optional(v.string()),
@@ -795,6 +825,13 @@ export default defineSchema({
     bookedByName: v.optional(v.string()),
     bookedForClerkId: v.optional(v.string()),
     purpose: v.string(),
+    // Usage professionnel ou personnel (selon les droits du véhicule).
+    usageType: v.optional(v.union(v.literal("pro"), v.literal("personal"))),
+    // Kilométrage estimé par le demandeur.
+    expectedKm: v.optional(v.number()),
+    // Transport d'objets/matériel (déménagement, collecte volumineuse…).
+    willTransport: v.optional(v.boolean()),
+    transportDetails: v.optional(v.string()),
     start: v.number(),
     end: v.number(),
     status: v.union(
@@ -852,7 +889,8 @@ export default defineSchema({
     title: v.string(),
     description: v.optional(v.string()),
     location: v.optional(v.string()),
-    start: v.number(),
+    // Date optionnelle : un événement peut être publié sans créneau précis.
+    start: v.optional(v.number()),
     end: v.optional(v.number()),
     images: v.array(v.id("_storage")),
     createdAt: v.number(),
@@ -895,7 +933,154 @@ export default defineSchema({
     .index("by_to", ["toClerkId"])
     .index("by_from", ["fromClerkId"]),
 
-  /** Klyde — stock textile avec champs de fiche proches de Vinted. */
+  /** Cycle en Bray — vélos reconditionnés, stock CRM et boutique publique. */
+  bikes: defineTable({
+    photos: v.array(v.id("_storage")),
+    title: v.string(),
+    description: v.string(),
+    site: v.union(v.literal("60"), v.literal("76")),
+    gdrReference: v.optional(v.string()),
+    internalReference: v.optional(v.string()),
+    category: v.string(),
+    brand: v.optional(v.string()),
+    model: v.optional(v.string()),
+    condition: v.string(),
+    useMode: v.optional(v.union(v.literal("purchase"), v.literal("rental"))),
+    status: v.union(
+      v.literal("inactive"),
+      v.literal("available"),
+      v.literal("purchase_pending"),
+      v.literal("sold"),
+      // Valeurs intermédiaires conservées pour compatibilité/migration.
+      v.literal("waiting"),
+      v.literal("online"),
+      v.literal("draft"),
+      v.literal("atelier"),
+      v.literal("ready"),
+      v.literal("reserved"),
+      v.literal("archived"),
+    ),
+    pipelineStatus: v.optional(v.union(
+      v.literal("nouveau"),
+      v.literal("validation"),
+      v.literal("en_cours"),
+      v.literal("gagnee"),
+      v.literal("perdue"),
+    )),
+    processStep: v.optional(v.number()),
+    processLog: v.optional(v.array(v.object({
+      step: v.number(),
+      by: v.string(),
+      at: v.number(),
+    }))),
+    customerName: v.optional(v.string()),
+    customerEmail: v.optional(v.string()),
+    customerPhone: v.optional(v.string()),
+    customerNotes: v.optional(v.string()),
+    price: v.optional(v.number()),
+    originalPrice: v.optional(v.number()),
+    sizeLabel: v.optional(v.string()),
+    frameHeightCm: v.optional(v.number()),
+    riderMinCm: v.optional(v.number()),
+    riderMaxCm: v.optional(v.number()),
+    wheelSize: v.optional(v.string()),
+    frameMaterial: v.optional(v.string()),
+    color: v.optional(v.string()),
+    weightKg: v.optional(v.number()),
+    brakeType: v.optional(v.string()),
+    drivetrain: v.optional(v.string()),
+    speeds: v.optional(v.number()),
+    motor: v.optional(v.string()),
+    batteryWh: v.optional(v.number()),
+    autonomyKm: v.optional(v.number()),
+    accessories: v.optional(v.array(v.string())),
+    repairs: v.optional(v.array(v.string())),
+    defects: v.optional(v.array(v.string())),
+    location: v.optional(v.string()),
+    featured: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_site", ["site"])
+    .index("by_category", ["category"])
+    .index("by_gdrReference", ["gdrReference"])
+    .index("by_featured", ["featured"])
+    .index("by_createdAt", ["createdAt"]),
+
+  cycleCustomers: defineTable({
+    firstName: v.string(),
+    lastName: v.string(),
+    email: v.string(),
+    phone: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_email", ["email"]),
+
+  cycleRequests: defineTable({
+    requestKind: v.optional(v.union(v.literal("reservation"), v.literal("reebike"), v.literal("repair"))),
+    bikeId: v.optional(v.id("bikes")),
+    bikeTitle: v.string(),
+    bikeGdrReference: v.optional(v.string()),
+    customerId: v.id("cycleCustomers"),
+    customer: v.object({
+      firstName: v.string(),
+      lastName: v.string(),
+      email: v.string(),
+      phone: v.string(),
+      message: v.optional(v.string()),
+    }),
+    reebike: v.optional(v.object({
+      desiredAt: v.string(),
+      duration: v.optional(v.string()),
+      formula: v.string(),
+      frontBrake: v.string(),
+      bikeType: v.string(),
+      wheelSize: v.string(),
+      compatibilityPhotos: v.optional(v.array(v.id("_storage"))),
+    })),
+    reservation: v.optional(v.object({
+      rentalStart: v.optional(v.string()),
+      rentalEnd: v.optional(v.string()),
+    })),
+    rental: v.optional(v.object({
+      startDate: v.string(),
+      endDate: v.string(),
+    })),
+    management: v.optional(v.object({
+      site: v.optional(v.union(v.literal("60"), v.literal("76"))),
+      assignedTo: v.optional(v.string()),
+      notes: v.optional(v.string()),
+    })),
+    pipelineStatus: v.union(
+      v.literal("nouveau"),
+      v.literal("validation"),
+      v.literal("en_cours"),
+      v.literal("gagnee"),
+      v.literal("perdue"),
+    ),
+    processStep: v.number(),
+    processLog: v.optional(v.array(v.object({
+      step: v.number(),
+      by: v.string(),
+      at: v.number(),
+    }))),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_pipelineStatus", ["pipelineStatus"])
+    .index("by_bikeId", ["bikeId"])
+    .index("by_customerId", ["customerId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  /* ─── Klyd : boutique textile (base de données partagée, tables dédiées) ──── */
+
+  /**
+   * Articles textile de la boutique Klyd. Stockés dans une table dédiée
+   * (et non dans `articles`) : les articles de la recyclerie et ceux de Klyd
+   * restent ainsi totalement séparés, tout en partageant le même déploiement
+   * Convex / la même base de données.
+   */
   klydeItems: defineTable({
     photos: v.array(v.id("_storage")),
     title: v.string(),
@@ -966,4 +1151,6 @@ export default defineSchema({
     .index("by_clerkId", ["clerkId"])
     .index("by_clerkId_itemId", ["clerkId", "itemId"])
     .index("by_itemId", ["itemId"]),
-});
+  },
+  { schemaValidation: false },
+);
