@@ -431,10 +431,10 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-async function composeNeutralWhiteBackground(foregroundBlob: Blob) {
+async function composeNeutralWhiteBackground(foregroundBlob: Blob, backgroundUrl = "/fond.png") {
   const [image, background] = await Promise.all([
     createImageBitmap(foregroundBlob),
-    fetch("/fond.png").then(async (response) => {
+    fetch(backgroundUrl).then(async (response) => {
       if (!response.ok) throw new Error("Image de fond impossible à charger.");
       return createImageBitmap(await response.blob());
     }),
@@ -756,6 +756,8 @@ function AppContent() {
   const [genderFilter, setGenderFilter] = useState("all");
   const [sizeFilter, setSizeFilter] = useState("all");
   const [extraDetails, setExtraDetails] = useState("");
+  const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
+  const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
   const [dropTarget, setDropTarget] = useState<KlydeStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -783,6 +785,13 @@ function AppContent() {
   const canDelete = can("klyde:stock", "delete");
   const canAnalyze = can("klyde:stock", "analyze");
   const canPublish = canUpdate || can("klyde:boutique", "manage");
+
+  useEffect(() => {
+    return () => {
+      if (customBackgroundUrl) revokeLocalPreview(customBackgroundUrl);
+    };
+  }, [customBackgroundUrl]);
+
   const items = useQuery(
     api.klyde.list,
     canRead ? { searchText: searchText || undefined } : "skip",
@@ -821,10 +830,16 @@ function AppContent() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function resetCustomBackground() {
+    setCustomBackgroundEnabled(false);
+    setCustomBackgroundUrl(null);
+  }
+
   function openNewArticle() {
     setEditingId(null);
     setForm(initialForm);
     setExtraDetails("");
+    resetCustomBackground();
     setError(null);
     setDrawerOpen(true);
   }
@@ -855,6 +870,7 @@ function AppContent() {
       aiNotes: item.aiNotes ?? "",
     });
     setExtraDetails("");
+    resetCustomBackground();
     setError(null);
     setDrawerOpen(true);
   }
@@ -866,6 +882,7 @@ function AppContent() {
     setEditingId(null);
     setForm(initialForm);
     setExtraDetails("");
+    resetCustomBackground();
     setError(null);
   }
 
@@ -970,6 +987,16 @@ function AppContent() {
     }
   }
 
+  function handleCustomBackgroundFile(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Choisis une image pour le fond personnalisé.");
+      return;
+    }
+    setError(null);
+    setCustomBackgroundUrl(URL.createObjectURL(file));
+  }
+
   async function removeBackgrounds() {
     if (form.photos.length === 0) {
       setError("Ajoute au moins une photo avant le détourage.");
@@ -978,6 +1005,8 @@ function AppContent() {
 
     const currentPhotoIds = form.photos;
     const currentPreviewUrls = form.previewUrls;
+    const backgroundUrl =
+      customBackgroundEnabled && customBackgroundUrl ? customBackgroundUrl : "/fond.png";
 
     setError(null);
     setBusy("background");
@@ -999,7 +1028,7 @@ function AppContent() {
             quality: 0.95,
           },
         });
-        const finalBlob = await composeNeutralWhiteBackground(cutoutBlob);
+        const finalBlob = await composeNeutralWhiteBackground(cutoutBlob, backgroundUrl);
         const file = new File([finalBlob], `klyde-detoure-${Date.now()}-${index + 1}.png`, {
           type: "image/png",
         });
@@ -1818,6 +1847,45 @@ function AppContent() {
                 className="min-h-20 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
                 placeholder="Précision optionnelle pour l’IA"
               />
+
+              <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={customBackgroundEnabled}
+                    onChange={(event) => {
+                      setCustomBackgroundEnabled(event.target.checked);
+                      if (!event.target.checked) setCustomBackgroundUrl(null);
+                    }}
+                    className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                  />
+                  Ajouter un fond personnalisé
+                </label>
+
+                {customBackgroundEnabled ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_112px] sm:items-center">
+                    <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--input)] p-3 text-center">
+                      <ImagePlus className="h-5 w-5 text-[var(--muted-foreground)]" />
+                      <span className="mt-1 text-sm font-medium">
+                        {customBackgroundUrl ? "Changer le fond" : "Choisir une image de fond"}
+                      </span>
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => handleCustomBackgroundFile(event.target.files?.[0])}
+                      />
+                    </label>
+                    <div className="aspect-square overflow-hidden rounded-md border border-[var(--border)] bg-[var(--muted)]">
+                      <img
+                        src={customBackgroundUrl ?? "/fond.png"}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               <div className="grid gap-2 sm:grid-cols-2">
                 <button
