@@ -432,7 +432,13 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 async function composeNeutralWhiteBackground(foregroundBlob: Blob) {
-  const image = await createImageBitmap(foregroundBlob);
+  const [image, background] = await Promise.all([
+    createImageBitmap(foregroundBlob),
+    fetch("/fond.png").then(async (response) => {
+      if (!response.ok) throw new Error("Image de fond impossible à charger.");
+      return createImageBitmap(await response.blob());
+    }),
+  ]);
   const canvas = document.createElement("canvas");
   canvas.width = image.width;
   canvas.height = image.height;
@@ -440,10 +446,19 @@ async function composeNeutralWhiteBackground(foregroundBlob: Blob) {
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas non disponible pour le détourage.");
 
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  const scale = Math.max(canvas.width / background.width, canvas.height / background.height);
+  const drawWidth = background.width * scale;
+  const drawHeight = background.height * scale;
+  context.drawImage(
+    background,
+    (canvas.width - drawWidth) / 2,
+    (canvas.height - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
   context.drawImage(image, 0, 0);
   image.close();
+  background.close();
 
   return canvasToPngBlob(canvas);
 }
@@ -1816,7 +1831,7 @@ function AppContent() {
                   ) : (
                     <Scissors className="h-4 w-4" />
                   )}
-                  Détourer sur fond blanc
+                  Détourer sur fond photo
                 </button>
                 <button
                   type="button"
