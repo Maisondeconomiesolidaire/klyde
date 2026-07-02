@@ -1,5 +1,5 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { SignedIn, SignedOut, SignInButton, UserButton, useClerk, useUser } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignInButton, useClerk, useUser } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -25,10 +25,13 @@ import {
   Trophy,
   User,
   X,
+  Camera,
+  LogOut,
 } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
+import { MyAppsGrid } from "./components/MyApps";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
@@ -319,6 +322,7 @@ function formatPrice(value?: number) {
 
 function currentRoute(): ShopRoute | "" {
   const hash = window.location.hash.replace(/^#/, "");
+  if (hash === "/profil") return "/profil";
   if (hash === "/boutique/panier") return "/boutique/panier" satisfies ShopRoute;
   if (hash === "/boutique/favoris") return "/boutique/favoris" satisfies ShopRoute;
   if (hash.startsWith("/boutique/recherche")) return hash;
@@ -739,6 +743,7 @@ function ArticleThumb({ item }: { item: ListedItem }) {
 }
 
 function AppContent() {
+  const { user } = useUser();
   const [activeTab, setActiveTab] = useState<AppTab>("stock");
   const [stockMode, setStockMode] = useState<StockMode>("cards");
   const [trackingTab, setTrackingTab] = useState<TrackingTab>("process");
@@ -1361,7 +1366,9 @@ function AppContent() {
             >
               Voir la boutique
             </button>
-            <UserButton afterSignOutUrl="/" />
+            <button type="button" onClick={() => goTo("/profil")} className="rounded-full">
+              <KlydeUserAvatar />
+            </button>
           </div>
         </div>
       </div>
@@ -1387,6 +1394,17 @@ function AppContent() {
         >
           <ShoppingBag className="h-4 w-4" />
           Voir la boutique
+        </button>
+        <button
+          type="button"
+          onClick={() => goTo("/profil")}
+          className="mt-3 flex items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left"
+        >
+          <KlydeUserAvatar />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold">{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
+            <span className="block truncate text-xs text-[var(--muted-foreground)]">{user?.primaryEmailAddress?.emailAddress}</span>
+          </span>
         </button>
       </aside>
 
@@ -1415,7 +1433,9 @@ function AppContent() {
             >
               Boutique
             </button>
-            <UserButton />
+            <button type="button" onClick={() => goTo("/profil")} className="rounded-full">
+              <KlydeUserAvatar />
+            </button>
           </div>
         </header>
 
@@ -3310,6 +3330,125 @@ function CartPage({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
   );
 }
 
+function KlydeUserAvatar({ large = false }: { large?: boolean }) {
+  const { user } = useUser();
+  const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Moi";
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--primary)] font-semibold text-white", large ? "h-24 w-24 text-2xl" : "h-9 w-9 text-xs")}>
+      {user?.imageUrl ? <img src={user.imageUrl} alt="" className="h-full w-full object-cover" /> : name.slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
+
+function KlydeProfilePage() {
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<"infos" | "apps">("infos");
+
+  if (!isLoaded) {
+    return <div className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted-foreground)]"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+  }
+  if (!user) return null;
+
+  const accountUser = user;
+  const currentFirstName = firstName || accountUser.firstName || "";
+  const currentLastName = lastName || accountUser.lastName || "";
+  const email = accountUser.primaryEmailAddress?.emailAddress ?? "";
+  const displayName = [accountUser.firstName, accountUser.lastName].filter(Boolean).join(" ") || email || "Mon profil";
+
+  async function saveProfile() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await accountUser.update({ firstName: currentFirstName.trim(), lastName: currentLastName.trim() });
+      await accountUser.reload();
+      setMessage("Profil enregistré.");
+    } catch {
+      setMessage("Impossible d'enregistrer le profil.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changePhoto(file?: File) {
+    if (!file) return;
+    setUploading(true);
+    setMessage("");
+    try {
+      await accountUser.setProfileImage({ file });
+      await accountUser.reload();
+      setMessage("Photo mise à jour.");
+    } catch {
+      setMessage("Impossible de mettre à jour la photo.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-[var(--background)] p-4 text-[var(--foreground)] sm:p-8">
+      <button type="button" onClick={() => goTo("")} className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-[var(--muted-foreground)]">
+        <ArrowLeft className="h-4 w-4" /> Retour au CRM
+      </button>
+      <nav className="mx-auto mb-6 flex max-w-2xl gap-1 overflow-x-auto border-b border-[var(--border)]">
+        {([{ key: "infos", label: "Informations" }, { key: "apps", label: "Mes applications" }] as const).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition",
+              tab === t.key ? "border-[var(--primary)] text-[var(--foreground)]" : "border-transparent text-[var(--muted-foreground)]",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "apps" ? (
+        <div className="mx-auto max-w-2xl">
+          <MyAppsGrid />
+        </div>
+      ) : (
+      <section className="mx-auto max-w-2xl rounded-md border border-[var(--border)] bg-[var(--card)] p-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <KlydeUserAvatar large />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold">{displayName}</h1>
+            <p className="text-sm text-[var(--muted-foreground)]">{email}</p>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(event) => changePhoto(event.target.files?.[0])} />
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="mt-3 inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border)] px-4 text-sm font-semibold">
+              <Camera className="h-4 w-4" /> {uploading ? "Envoi..." : "Changer la photo"}
+            </button>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <label className="text-sm font-medium">Prénom<input className={inputClass()} value={currentFirstName} onChange={(event) => setFirstName(event.target.value)} /></label>
+          <label className="text-sm font-medium">Nom<input className={inputClass()} value={currentLastName} onChange={(event) => setLastName(event.target.value)} /></label>
+          <label className="text-sm font-medium sm:col-span-2">Email<input className={inputClass()} value={email} disabled /></label>
+        </div>
+        {message ? <p className="mt-4 rounded-md bg-[var(--muted)] p-3 text-sm">{message}</p> : null}
+        <div className="mt-6 flex flex-wrap justify-between gap-3 border-t border-[var(--border)] pt-4">
+          <button type="button" onClick={() => void signOut({ redirectUrl: "/" })} className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border)] px-4 text-sm font-semibold">
+            <LogOut className="h-4 w-4" /> Se déconnecter
+          </button>
+          <button type="button" onClick={saveProfile} disabled={saving} className="h-10 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-60">
+            {saving ? "Enregistrement..." : "Enregistrer"}
+          </button>
+        </div>
+      </section>
+      )}
+    </main>
+  );
+}
+
 export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
 
@@ -3320,6 +3459,23 @@ export default function App() {
     window.addEventListener("hashchange", syncRoute);
     return () => window.removeEventListener("hashchange", syncRoute);
   }, []);
+
+  if (route === "/profil") {
+    return (
+      <>
+        <SignedOut>
+          <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
+            <SignInButton mode="modal">
+              <button className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white">Connexion</button>
+            </SignInButton>
+          </div>
+        </SignedOut>
+        <SignedIn>
+          <KlydeProfilePage />
+        </SignedIn>
+      </>
+    );
+  }
 
   if (route) return <BoutiqueShell route={route} />;
 
