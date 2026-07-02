@@ -3414,7 +3414,7 @@ function KlydeProfilePage() {
 
       {tab === "apps" ? (
         <div className="mx-auto max-w-2xl">
-          <MyAppsGrid />
+          <MyAppsGrid current="klyde" />
         </div>
       ) : (
       <section className="mx-auto max-w-2xl rounded-md border border-[var(--border)] bg-[var(--card)] p-5">
