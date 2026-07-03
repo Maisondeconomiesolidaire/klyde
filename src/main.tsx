@@ -27,7 +27,11 @@ if (missing.length > 0) {
   root.render(
     <StrictMode>
       <ErrorBoundary>
-        <ClerkProvider publishableKey={clerkKey} localization={frFR}>
+        <ClerkProvider
+          publishableKey={clerkKey}
+          localization={frFR}
+          appearance={{ variables: { colorPrimary: "#e8306a" } }}
+        >
           <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
             <App />
           </ConvexProviderWithClerk>
