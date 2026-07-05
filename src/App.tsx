@@ -2972,7 +2972,7 @@ function ProductDetailPage({
                   selectedPhoto === index && "ring-2 ring-[#010102]",
                 )}
               >
-                <img src={url} alt="" className="h-full w-full object-cover" />
+                <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
               </button>
             ))}
           </div>
@@ -3255,7 +3255,7 @@ function CartPage({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
             <div className="mt-8 grid gap-4">
               {availableArticles.map((item) => (
                 <article key={item._id} className="grid grid-cols-[96px_1fr_auto] gap-4 border-b border-[#1f1b18]/10 pb-4">
-                  <img src={item.photoUrls[0] ?? ""} alt="" className="h-24 w-24 bg-white object-cover" />
+                  <img src={item.photoUrls[0] ?? ""} alt="" loading="lazy" decoding="async" className="h-24 w-24 bg-white object-cover" />
                   <div className="min-w-0">
                     <h2 className="font-semibold">{item.title}</h2>
                     <p className="mt-1 text-sm text-[#1f1b18]/55">
