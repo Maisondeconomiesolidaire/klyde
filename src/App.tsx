@@ -1,5 +1,5 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { SignedIn, SignedOut, SignInButton, useClerk, useUser } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -3451,6 +3451,7 @@ function KlydeProfilePage() {
 
 export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
+  const clerk = useClerk();
 
   useEffect(() => {
     function syncRoute() {
@@ -3465,9 +3466,10 @@ export default function App() {
       <>
         <SignedOut>
           <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
-            <SignInButton mode="modal">
-              <button className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white">Connexion</button>
-            </SignInButton>
+            <AuthChoicePanel
+              onSignIn={() => clerk.openSignIn({})}
+              onSignUp={() => clerk.openSignUp({})}
+            />
           </div>
         </SignedOut>
         <SignedIn>
@@ -3488,11 +3490,12 @@ export default function App() {
             <p className="mt-4 text-sm text-[var(--muted-foreground)]">
               Connecte-toi pour accéder à ton stock.
             </p>
-            <SignInButton mode="modal">
-              <button className="mt-6 w-full rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white">
-                Connexion
-              </button>
-            </SignInButton>
+            <div className="mt-6">
+              <AuthChoicePanel
+                onSignIn={() => clerk.openSignIn({})}
+                onSignUp={() => clerk.openSignUp({})}
+              />
+            </div>
           </div>
         </div>
       </SignedOut>
@@ -3500,5 +3503,32 @@ export default function App() {
         <AppContent />
       </SignedIn>
     </>
+  );
+}
+
+function AuthChoicePanel({
+  onSignIn,
+  onSignUp,
+}: {
+  onSignIn: () => void;
+  onSignUp: () => void;
+}) {
+  return (
+    <div className="grid w-full gap-3">
+      <button
+        type="button"
+        onClick={onSignIn}
+        className="rounded-2xl bg-[var(--primary)] px-5 py-4 text-base font-bold text-white shadow-sm transition hover:-translate-y-0.5"
+      >
+        J'ai déjà un compte, me connecter
+      </button>
+      <button
+        type="button"
+        onClick={onSignUp}
+        className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-5 py-4 text-base font-bold text-[var(--foreground)] shadow-sm transition hover:-translate-y-0.5 hover:bg-[var(--accent)]"
+      >
+        Je m'inscris
+      </button>
+    </div>
   );
 }
