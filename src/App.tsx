@@ -3465,7 +3465,7 @@ export default function App() {
   if (route === "/profil") {
     return (
       <>
-        <UpdateAvailableBanner />
+        <UpdateAvailableBanner appName="Klyde" />
         <SignedOut>
           <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
             <AuthChoicePanel
@@ -3484,7 +3484,7 @@ export default function App() {
   if (route) {
     return (
       <>
-        <UpdateAvailableBanner />
+        <UpdateAvailableBanner appName="Klyde" />
         <BoutiqueShell route={route} />
       </>
     );
@@ -3492,7 +3492,7 @@ export default function App() {
 
   return (
     <>
-      <UpdateAvailableBanner />
+      <UpdateAvailableBanner appName="Klyde" />
       <SignedOut>
         <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
           <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6">
