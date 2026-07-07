@@ -32,6 +32,7 @@ import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
 import { MyAppsGrid } from "./components/MyApps";
+import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
@@ -3464,6 +3465,7 @@ export default function App() {
   if (route === "/profil") {
     return (
       <>
+        <UpdateAvailableBanner />
         <SignedOut>
           <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
             <AuthChoicePanel
@@ -3479,10 +3481,18 @@ export default function App() {
     );
   }
 
-  if (route) return <BoutiqueShell route={route} />;
+  if (route) {
+    return (
+      <>
+        <UpdateAvailableBanner />
+        <BoutiqueShell route={route} />
+      </>
+    );
+  }
 
   return (
     <>
+      <UpdateAvailableBanner />
       <SignedOut>
         <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
           <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6">
