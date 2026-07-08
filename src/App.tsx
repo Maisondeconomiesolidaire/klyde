@@ -31,7 +31,6 @@ import {
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
-import { redirectToCentralAuth } from "./lib/centralAuth";
 import { MyAppsGrid } from "./components/MyApps";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { useKlydeCart } from "./lib/useKlydeCart";
@@ -3166,6 +3165,7 @@ function WishlistPage({
 
 function CartPage({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
   const { isSignedIn, user } = useUser();
+  const clerk = useClerk();
   const submitOrder = useMutation(api.klyde.submitCartOrder);
   const articles = useQuery(api.klyde.getManyPublic, {
     ids: cart.ids as Id<"klydeItems">[],
@@ -3197,7 +3197,7 @@ function CartPage({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
   async function validateCart(event: FormEvent) {
     event.preventDefault();
     if (!isSignedIn) {
-      redirectToCentralAuth("sign-in");
+      clerk.openSignIn({});
       return;
     }
     if (availableArticles.length === 0) return;
@@ -3463,6 +3463,7 @@ function KlydeProfilePage() {
 
 export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
+  const clerk = useClerk();
 
   useEffect(() => {
     function syncRoute() {
@@ -3479,8 +3480,8 @@ export default function App() {
         <SignedOut>
           <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
             <AuthChoicePanel
-              onSignIn={() => redirectToCentralAuth("sign-in")}
-              onSignUp={() => redirectToCentralAuth("sign-up")}
+              onSignIn={() => clerk.openSignIn({})}
+              onSignUp={() => clerk.openSignUp({})}
             />
           </div>
         </SignedOut>
@@ -3516,8 +3517,8 @@ export default function App() {
             </p>
             <div className="mt-6">
               <AuthChoicePanel
-                onSignIn={() => redirectToCentralAuth("sign-in")}
-                onSignUp={() => redirectToCentralAuth("sign-up")}
+                onSignIn={() => clerk.openSignIn({})}
+                onSignUp={() => clerk.openSignUp({})}
               />
             </div>
           </div>
