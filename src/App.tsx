@@ -69,6 +69,17 @@ type FormState = {
 type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
 type ShopItem = ListedItem;
 
+/** Crée/rafraîchit le profil Convex à la connexion et rattache les données. */
+function ProfileSync({ app }: { app: string }) {
+  const syncProfile = useMutation(api.users.syncProfile);
+  useEffect(() => {
+    void syncProfile({
+      source: { app, path: window.location.pathname + window.location.search + window.location.hash },
+    });
+  }, [app, syncProfile]);
+  return null;
+}
+
 const initialForm: FormState = {
   photos: [],
   previewUrls: [],
@@ -3475,6 +3486,7 @@ export default function App() {
           </div>
         </SignedOut>
         <SignedIn>
+          <ProfileSync app="klyde" />
           <KlydeProfilePage />
         </SignedIn>
       </>
@@ -3485,6 +3497,9 @@ export default function App() {
     return (
       <>
         <UpdateAvailableBanner appName="Klyde" />
+        <SignedIn>
+          <ProfileSync app="klyde" />
+        </SignedIn>
         <BoutiqueShell route={route} />
       </>
     );
@@ -3510,6 +3525,7 @@ export default function App() {
         </div>
       </SignedOut>
       <SignedIn>
+        <ProfileSync app="klyde" />
         <AppContent />
       </SignedIn>
     </>
