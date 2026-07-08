@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ClerkProvider, useAuth } from "@clerk/clerk-react";
 import { frFR } from "@clerk/localizations";
-import { ConvexReactClient } from "convex/react";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -25,7 +25,8 @@ if (missing.length > 0) {
   );
 } else {
   const convex = new ConvexReactClient(convexUrl);
-  const satelliteProps = needsCentralAuthRedirect()
+  const useCentralAuth = needsCentralAuthRedirect();
+  const satelliteProps = useCentralAuth
     ? {
         isSatellite: true,
         domain: window.location.host,
@@ -42,9 +43,15 @@ if (missing.length > 0) {
           appearance={{ variables: { colorPrimary: "#e8306a" } }}
           {...satelliteProps}
         >
-          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-            <App />
-          </ConvexProviderWithClerk>
+          {useCentralAuth ? (
+            <ConvexProvider client={convex}>
+              <App />
+            </ConvexProvider>
+          ) : (
+            <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+              <App />
+            </ConvexProviderWithClerk>
+          )}
         </ClerkProvider>
       </ErrorBoundary>
     </StrictMode>,
