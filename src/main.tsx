@@ -30,7 +30,10 @@ if (missing.length > 0) {
         <ClerkProvider
           publishableKey={clerkKey}
           localization={frFR}
-          appearance={{ variables: { colorPrimary: "#e8306a" } }}
+          appearance={{
+            layout: { logoImageUrl: "/klyd-logo.png", logoPlacement: "inside" },
+            variables: { colorPrimary: "#e8306a", borderRadius: "14px" },
+          }}
         >
           <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
             <App />
