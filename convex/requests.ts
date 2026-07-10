@@ -12,6 +12,7 @@ import {
   isVeloComplete,
   isLivraisonComplete,
   normalizeCustomer,
+  normalizeEmail,
   requireUser,
   titleCaseName,
 } from "./lib";
@@ -41,6 +42,23 @@ function withFieldEdits(
   const next = { ...(existing ?? {}) };
   for (const key of keys) next[key] = { by, at };
   return next;
+}
+
+function sameValue(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function setPatchIfChanged<T>(
+  patch: Record<string, unknown>,
+  changed: string[],
+  key: string,
+  currentValue: T,
+  nextValue: T,
+  trackFieldEdit = true,
+) {
+  if (sameValue(currentValue, nextValue)) return;
+  patch[key] = nextValue;
+  if (trackFieldEdit) changed.push(key);
 }
 
 const customerArg = v.object({
@@ -128,8 +146,9 @@ async function createNewRequestNotification(
     });
   }
 
-  // Email à l'équipe recyclerie (accueil / e.carette / s.tiennot) — décalé pour
-  // rester sous la limite Resend (2 req/s) avec l'email client.
+  // Email à l'équipe recyclerie — décalé pour rester sous la limite Resend
+  // (2 req/s) avec l'email client. E. Carette est ajouté uniquement pour
+  // les demandes d'aérogommage par l'action d'envoi.
   if (request) {
     await ctx.scheduler.runAfter(1200, internal.emails.sendNewRequestToStaff, {
       type: request.type,
@@ -144,6 +163,88 @@ async function generateReference(ctx: MutationCtx): Promise<string> {
   const all = await ctx.db.query("requests").collect();
   const n = all.length + 1;
   return n.toString().padStart(6, "0");
+}
+
+async function upsertRequestCustomer(
+  ctx: MutationCtx,
+  customerInput: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    address?: string;
+    postalCode?: string;
+    city?: string;
+  },
+  sourcePath: string,
+) {
+  const customer = normalizeCustomer(customerInput);
+  const email = normalizeEmail(customer.email);
+  const now = Date.now();
+
+  const [existingUser, existingCrmCustomer, identity] = await Promise.all([
+    email
+      ? ctx.db
+          .query("users")
+          .withIndex("by_email", (q) => q.eq("email", email))
+          .first()
+      : null,
+    email
+      ? ctx.db
+          .query("crmCustomers")
+          .withIndex("by_email", (q) => q.eq("email", email))
+          .first()
+      : null,
+    ctx.auth.getUserIdentity(),
+  ]);
+
+  if (existingUser) {
+    await ctx.db.patch(existingUser._id, {
+      firstName: titleCaseName(customer.firstName),
+      lastName: titleCaseName(customer.lastName),
+      phone: customer.phone,
+      address: customer.address,
+      postalCode: customer.postalCode,
+      city: customer.city,
+      updatedAt: now,
+    });
+  }
+
+  if (existingCrmCustomer) {
+    await ctx.db.patch(existingCrmCustomer._id, {
+      firstName: titleCaseName(customer.firstName),
+      lastName: titleCaseName(customer.lastName),
+      phone: customer.phone,
+      address: customer.address,
+      postalCode: customer.postalCode,
+      city: customer.city,
+      updatedAt: now,
+    });
+  } else if (email) {
+    await ctx.db.insert("crmCustomers", {
+      source: "public:request",
+      sourceId: `${sourcePath}:${email}`,
+      firstName: titleCaseName(customer.firstName),
+      lastName: titleCaseName(customer.lastName),
+      email,
+      phone: customer.phone,
+      address: customer.address,
+      postalCode: customer.postalCode,
+      city: customer.city,
+      raw: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const signedInEmail = normalizeEmail(identity?.email);
+  const signedInUserId =
+    signedInEmail && signedInEmail === email ? identity?.subject : undefined;
+
+  return {
+    customer,
+    userId: existingUser?.clerkId ?? signedInUserId,
+  };
 }
 
 function requestArticleIds(request: {
@@ -175,6 +276,8 @@ function requestStorageIds(request: Doc<"requests">) {
   for (const id of request.afterPhotos ?? []) ids.add(id);
   for (const item of request.aerogommage ?? []) {
     for (const id of item.photos ?? []) ids.add(id);
+    for (const id of item.beforePhotos ?? []) ids.add(id);
+    for (const id of item.afterPhotos ?? []) ids.add(id);
   }
   for (const entry of request.collecte?.categoryPhotos ?? []) {
     for (const id of entry.photos ?? []) ids.add(id);
@@ -210,7 +313,12 @@ export const submitAerogommage = mutation({
     options: v.optional(aerogommageOptionsArg),
   },
   handler: async (ctx, { customer, comment, photos, items, options }) => {
-    customer = normalizeCustomer(customer);
+    const resolvedCustomer = await upsertRequestCustomer(
+      ctx,
+      customer,
+      "/aerogommage",
+    );
+    customer = resolvedCustomer.customer;
     const now = Date.now();
     const reference = await generateReference(ctx);
     const requestId = await ctx.db.insert("requests", {
@@ -223,7 +331,7 @@ export const submitAerogommage = mutation({
       completedSteps: 0,
       site: "60", // Recyclerie 60 par défaut pour l'aérogommage.
       customer,
-      userId: (await ctx.auth.getUserIdentity())?.subject,
+      userId: resolvedCustomer.userId,
       comment,
       photos,
       aerogommage: items,
@@ -279,7 +387,12 @@ export const submitCollecte = mutation({
     }),
   },
   handler: async (ctx, { customer, comment, photos, details }) => {
-    customer = normalizeCustomer(customer);
+    const resolvedCustomer = await upsertRequestCustomer(
+      ctx,
+      customer,
+      "/collecte",
+    );
+    customer = resolvedCustomer.customer;
     const now = Date.now();
     const reference = await generateReference(ctx);
     const requestId = await ctx.db.insert("requests", {
@@ -293,7 +406,7 @@ export const submitCollecte = mutation({
       processSteps: resolveProcess("collecte", "indefini"),
       completedSteps: 0,
       customer,
-      userId: (await ctx.auth.getUserIdentity())?.subject,
+      userId: resolvedCustomer.userId,
       comment,
       photos,
       collecte: details,
@@ -324,7 +437,12 @@ export const submitVelo = mutation({
     }),
   },
   handler: async (ctx, { customer, comment, photos, details }) => {
-    customer = normalizeCustomer(customer);
+    const resolvedCustomer = await upsertRequestCustomer(
+      ctx,
+      customer,
+      "/velo",
+    );
+    customer = resolvedCustomer.customer;
     const now = Date.now();
     const reference = await generateReference(ctx);
     const requestId = await ctx.db.insert("requests", {
@@ -336,7 +454,7 @@ export const submitVelo = mutation({
       processSteps: resolveProcess("velo"),
       completedSteps: 0,
       customer,
-      userId: (await ctx.auth.getUserIdentity())?.subject,
+      userId: resolvedCustomer.userId,
       comment,
       photos,
       velo: details,
@@ -361,7 +479,12 @@ export const submitLivraison = mutation({
     referencePhoto: v.optional(v.id("_storage")),
   },
   handler: async (ctx, { customer, comment, articlePhoto, referencePhoto }) => {
-    customer = normalizeCustomer(customer);
+    const resolvedCustomer = await upsertRequestCustomer(
+      ctx,
+      customer,
+      "/livraison",
+    );
+    customer = resolvedCustomer.customer;
     const now = Date.now();
     const reference = await generateReference(ctx);
     const details = {
@@ -386,7 +509,7 @@ export const submitLivraison = mutation({
       processSteps: resolveProcess("livraison"),
       completedSteps: 0,
       customer,
-      userId: (await ctx.auth.getUserIdentity())?.subject,
+      userId: resolvedCustomer.userId,
       comment,
       photos,
       livraison: details,
@@ -410,7 +533,12 @@ export const submitArticleReservation = mutation({
     articleId: v.id("articles"),
   },
   handler: async (ctx, { customer, comment, articleId }) => {
-    customer = normalizeCustomer(customer);
+    const resolvedCustomer = await upsertRequestCustomer(
+      ctx,
+      customer,
+      "/boutique",
+    );
+    customer = resolvedCustomer.customer;
     const article = await ctx.db.get(articleId);
     if (!article) throw new Error("Article introuvable.");
     if (article.status !== "disponible") {
@@ -429,7 +557,7 @@ export const submitArticleReservation = mutation({
       processSteps: resolveProcess("article"),
       completedSteps: 0,
       customer,
-      userId: (await ctx.auth.getUserIdentity())?.subject,
+      userId: resolvedCustomer.userId,
       comment,
       photos: [],
       article: { articleId, articleTitle: article.title },
@@ -460,7 +588,12 @@ export const submitArticleCartReservation = mutation({
     articleIds: v.array(v.id("articles")),
   },
   handler: async (ctx, { customer, comment, articleIds }) => {
-    customer = normalizeCustomer(customer);
+    const resolvedCustomer = await upsertRequestCustomer(
+      ctx,
+      customer,
+      "/boutique/panier",
+    );
+    customer = resolvedCustomer.customer;
     const uniqueArticleIds = Array.from(new Set(articleIds));
     if (uniqueArticleIds.length === 0) {
       throw new Error("Ajoutez au moins un article au panier.");
@@ -490,7 +623,7 @@ export const submitArticleCartReservation = mutation({
       processSteps: resolveProcess("article"),
       completedSteps: 0,
       customer,
-      userId: (await ctx.auth.getUserIdentity())?.subject,
+      userId: resolvedCustomer.userId,
       comment,
       photos: [],
       article: articles[0],
@@ -729,6 +862,20 @@ export const get = query({
         ).filter((u): u is string => u !== null),
       ),
     );
+    const aerogommageBeforePhotos = await Promise.all(
+      (request.aerogommage ?? []).map(async (item) =>
+        (
+          await Promise.all((item.beforePhotos ?? []).map((p) => ctx.storage.getUrl(p)))
+        ).filter((u): u is string => u !== null),
+      ),
+    );
+    const aerogommageAfterPhotos = await Promise.all(
+      (request.aerogommage ?? []).map(async (item) =>
+        (
+          await Promise.all((item.afterPhotos ?? []).map((p) => ctx.storage.getUrl(p)))
+        ).filter((u): u is string => u !== null),
+      ),
+    );
     // Résout les URLs des photos de collecte, groupées par catégorie.
     const collecteCategoryPhotos = await Promise.all(
       (request.collecte?.categoryPhotos ?? []).map(async (entry) => ({
@@ -752,6 +899,8 @@ export const get = query({
       beforePhotoUrls: beforePhotoUrls.filter((u): u is string => u !== null),
       afterPhotoUrls: afterPhotoUrls.filter((u): u is string => u !== null),
       aerogommagePhotos,
+      aerogommageBeforePhotos,
+      aerogommageAfterPhotos,
       collecteCategoryPhotos,
       livraisonArticleUrl,
       livraisonReferenceUrl,
@@ -1022,19 +1171,24 @@ export const patchManagement = mutation({
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, "demandes", "update");
     const request = await ctx.db.get(args.id);
-    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    if (!request) throw new Error("Demande introuvable.");
+    const patch: Record<string, unknown> = {};
     const changed: string[] = [];
     if (args.site !== undefined) {
-      patch.site = args.site;
-      changed.push("site");
+      setPatchIfChanged(patch, changed, "site", request.site, args.site);
     }
     if (args.assignedTo !== undefined) {
-      patch.assignedTo = args.assignedTo ?? undefined;
-      changed.push("assignedTo");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "assignedTo",
+        request.assignedTo,
+        args.assignedTo ?? undefined,
+      );
     }
     if (args.assignedVehicle !== undefined) {
       if (args.assignedVehicle) {
-        const date = request?.scheduledDate ?? Date.now();
+        const date = request.scheduledDate ?? Date.now();
         const reason = await vehicleBusyReason(ctx, args.assignedVehicle, date, {
           excludeRequestId: args.id,
         });
@@ -1042,32 +1196,82 @@ export const patchManagement = mutation({
           throw new Error(`Véhicule indisponible à cette date : ${reason}`);
         }
       }
-      patch.assignedVehicle = args.assignedVehicle ?? undefined;
-      changed.push("assignedVehicle");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "assignedVehicle",
+        request.assignedVehicle,
+        args.assignedVehicle ?? undefined,
+      );
     }
     if (args.estimatedHours !== undefined) {
-      patch.estimatedHours = args.estimatedHours ?? undefined;
-      changed.push("estimatedHours");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "estimatedHours",
+        request.estimatedHours,
+        args.estimatedHours ?? undefined,
+      );
     }
     if (args.actualHours !== undefined) {
-      patch.actualHours = args.actualHours ?? undefined;
-      changed.push("actualHours");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "actualHours",
+        request.actualHours,
+        args.actualHours ?? undefined,
+      );
     }
     if (args.quoteAmount !== undefined) {
-      patch.quoteAmount = args.quoteAmount ?? undefined;
-      changed.push("quoteAmount");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "quoteAmount",
+        request.quoteAmount,
+        args.quoteAmount ?? undefined,
+      );
     }
     if (args.quoteDetails !== undefined) {
-      patch.quoteDetails = args.quoteDetails ?? undefined;
-      changed.push("quoteDetails");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "quoteDetails",
+        request.quoteDetails,
+        args.quoteDetails ?? undefined,
+      );
     }
     if (args.visitNeeded !== undefined) {
-      patch.visitNeeded = args.visitNeeded ?? undefined;
-      changed.push("visitNeeded");
+      setPatchIfChanged(
+        patch,
+        changed,
+        "visitNeeded",
+        request.visitNeeded,
+        args.visitNeeded ?? undefined,
+      );
     }
-    if (args.beforePhotos !== undefined) patch.beforePhotos = args.beforePhotos;
-    if (args.afterPhotos !== undefined) patch.afterPhotos = args.afterPhotos;
-    const fieldEdits = withFieldEdits(request?.fieldEdits, changed, args.actorName);
+    if (args.beforePhotos !== undefined) {
+      setPatchIfChanged(
+        patch,
+        changed,
+        "beforePhotos",
+        request.beforePhotos,
+        args.beforePhotos,
+        false,
+      );
+    }
+    if (args.afterPhotos !== undefined) {
+      setPatchIfChanged(
+        patch,
+        changed,
+        "afterPhotos",
+        request.afterPhotos,
+        args.afterPhotos,
+        false,
+      );
+    }
+    if (Object.keys(patch).length === 0) return;
+    patch.updatedAt = Date.now();
+    const fieldEdits = withFieldEdits(request.fieldEdits, changed, args.actorName);
     if (fieldEdits) patch.fieldEdits = fieldEdits;
     await ctx.db.patch(args.id, patch);
   },
@@ -1333,10 +1537,13 @@ export const updateCustomer = mutation({
   handler: async (ctx, { id, customer, actorName }) => {
     await requireCrmPermission(ctx, "demandes", "update");
     const request = await ctx.db.get(id);
+    if (!request) throw new Error("Demande introuvable.");
+    const nextCustomer = normalizeCustomer(customer);
+    if (sameValue(normalizeCustomer(request.customer), nextCustomer)) return;
     await ctx.db.patch(id, {
-      customer: normalizeCustomer(customer),
+      customer: nextCustomer,
       updatedAt: Date.now(),
-      fieldEdits: withFieldEdits(request?.fieldEdits, ["customer"], actorName),
+      fieldEdits: withFieldEdits(request.fieldEdits, ["customer"], actorName),
     });
   },
 });
@@ -1358,18 +1565,25 @@ export const updateAerogommageDetails = mutation({
       throw new Error("Type de demande invalide.");
     }
 
-    await ctx.db.patch(id, {
-      comment: comment?.trim() || undefined,
-      aerogommage: items,
+    const nextComment = comment?.trim() || undefined;
+    const nextComplete = isAerogommageComplete(request.customer, items);
+    const patch: Record<string, unknown> = {};
+    const changed: string[] = [];
+    setPatchIfChanged(patch, changed, "comment", request.comment, nextComment);
+    setPatchIfChanged(patch, changed, "aerogommage", request.aerogommage, items);
+    setPatchIfChanged(
+      patch,
+      changed,
+      "aerogommageOptions",
+      request.aerogommageOptions,
       aerogommageOptions,
-      complete: isAerogommageComplete(request.customer, items),
-      updatedAt: Date.now(),
-      fieldEdits: withFieldEdits(
-        request.fieldEdits,
-        ["comment", "aerogommage", "aerogommageOptions"],
-        actorName,
-      ),
-    });
+    );
+    setPatchIfChanged(patch, changed, "complete", request.complete, nextComplete, false);
+    if (Object.keys(patch).length === 0) return;
+    patch.updatedAt = Date.now();
+    const fieldEdits = withFieldEdits(request.fieldEdits, changed, actorName);
+    if (fieldEdits) patch.fieldEdits = fieldEdits;
+    await ctx.db.patch(id, patch);
   },
 });
 

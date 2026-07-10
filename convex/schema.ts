@@ -15,6 +15,15 @@ export const bpMaterial = v.union(
   v.literal("Réemploi"),
   v.literal("Bois"),
   v.literal("CSR"),
+  v.literal("DEEE"),
+  v.literal("ECODDS - Pateux"),
+  v.literal("ECODDS - Aerosols"),
+  v.literal("ECODDS - Bases"),
+  v.literal("ECODDS - Pateux acrylique"),
+  v.literal("ECODDS - Phytosanitaire"),
+  v.literal("ECODDS - Acides"),
+  v.literal("ECODDS - Outillage du peintre"),
+  v.literal("ECODDS - Peinture"),
   v.literal("Inertes/Gravats"),
   v.literal("Laine de roche"),
   v.literal("Laine de verre"),
@@ -128,6 +137,9 @@ export const aerogommageItem = v.object({
   comment: v.optional(v.string()),
   // Photos rattachées à cet objet précis.
   photos: v.optional(v.array(v.id("_storage"))),
+  // Photos de suivi rattachées à cet objet précis.
+  beforePhotos: v.optional(v.array(v.id("_storage"))),
+  afterPhotos: v.optional(v.array(v.id("_storage"))),
 });
 
 const address = v.object({
@@ -1410,6 +1422,8 @@ export default defineSchema(
     lon: v.optional(v.number()),
     /** Distance aller (km) depuis la base — sert au calcul des déplacements. */
     distanceKm: v.number(),
+    /** Coût kilométrique HT utilisé pour les déplacements sur ce projet. */
+    travelRatePerKm: v.optional(v.number()),
     status: v.union(
       v.literal("en_cours"),
       v.literal("termine"),
@@ -1442,6 +1456,7 @@ export default defineSchema(
       v.object({
         roundTrips: v.number(),
         distanceKm: v.number(),
+        ratePerKm: v.optional(v.number()),
         cost: v.number(),
       }),
     ),
@@ -1459,6 +1474,7 @@ export default defineSchema(
   /** Fournisseurs. */
   ptSuppliers: defineTable({
     name: v.string(),
+    supplierType: v.optional(v.string()),
     contactName: v.optional(v.string()),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
