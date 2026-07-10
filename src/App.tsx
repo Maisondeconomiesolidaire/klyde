@@ -31,8 +31,8 @@ import {
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
-import { MyAppsGrid } from "./components/MyApps";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
+import { AppSwitcher } from "./components/AppSwitcher";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
@@ -1391,8 +1391,9 @@ function AppContent() {
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:flex">
         <div>
-          <div className="flex justify-center">
+          <div className="flex items-center justify-between gap-2">
             <Logo />
+            <AppSwitcher current="klyde" />
           </div>
           <nav className="mt-8 grid gap-1">
             {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
@@ -3361,7 +3362,6 @@ function KlydeProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
-  const [tab, setTab] = useState<"infos" | "apps">("infos");
 
   if (!isLoaded) {
     return <div className="grid min-h-screen place-items-center bg-[var(--background)] text-[var(--muted-foreground)]"><Loader2 className="h-5 w-5 animate-spin" /></div>;
@@ -3408,27 +3408,6 @@ function KlydeProfilePage() {
       <button type="button" onClick={() => goTo("")} className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-[var(--muted-foreground)]">
         <ArrowLeft className="h-4 w-4" /> Retour au CRM
       </button>
-      <nav className="mx-auto mb-6 flex max-w-2xl gap-1 overflow-x-auto border-b border-[var(--border)]">
-        {([{ key: "infos", label: "Informations" }, { key: "apps", label: "Mes applications" }] as const).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              "shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition",
-              tab === t.key ? "border-[var(--primary)] text-[var(--foreground)]" : "border-transparent text-[var(--muted-foreground)]",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      {tab === "apps" ? (
-        <div className="mx-auto max-w-2xl">
-          <MyAppsGrid current="klyde" />
-        </div>
-      ) : (
       <section className="mx-auto max-w-2xl rounded-md border border-[var(--border)] bg-[var(--card)] p-5">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
           <KlydeUserAvatar large />
@@ -3456,7 +3435,6 @@ function KlydeProfilePage() {
           </button>
         </div>
       </section>
-      )}
     </main>
   );
 }
