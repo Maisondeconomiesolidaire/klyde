@@ -1446,6 +1446,9 @@ function AppContent() {
             >
               Boutique
             </button>
+            <div className="md:hidden">
+              <AppSwitcher current="klyde" />
+            </div>
             <button type="button" onClick={() => goTo("/profil")} className="rounded-full">
               <KlydeUserAvatar />
             </button>
