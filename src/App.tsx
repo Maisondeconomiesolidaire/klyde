@@ -33,6 +33,7 @@ import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { AppSwitcher } from "./components/AppSwitcher";
+import { HelpButton } from "./components/HelpButton";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
@@ -1389,6 +1390,7 @@ function AppContent() {
 
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <HelpButton />
       <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:flex">
         <div>
           <div className="flex items-center justify-between gap-2">
