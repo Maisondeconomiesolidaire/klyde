@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { feedbackApp, feedbackStatus, feedbackType } from "./schema";
+import { feedbackApp, feedbackPriority, feedbackStatus, feedbackType } from "./schema";
 import {
   hasCrmPermission,
   livePhoto,
@@ -29,6 +30,17 @@ import {
  */
 const FEEDBACK_PAGE_KEY = "feedback:retours";
 const FEEDBACK_KANBAN_PAGE_KEY = "feedback:kanban";
+
+/** Nom affichable de l'auteur d'une action (email « traité par … »). */
+function feedbackDisplayName(identity: {
+  name?: string | null;
+  givenName?: string | null;
+  familyName?: string | null;
+  email?: string | null;
+}) {
+  const fullName = [identity.givenName, identity.familyName].filter(Boolean).join(" ").trim();
+  return identity.name?.trim() || fullName || identity.email?.trim() || "L'équipe produit";
+}
 
 /** Peut traiter les retours (kanban) : statut, réponse d'équipe, suppression. */
 async function canModerateFeedback(ctx: QueryCtx | MutationCtx) {
@@ -95,6 +107,7 @@ export const submit = mutation({
     app: feedbackApp,
     type: feedbackType,
     description: v.string(),
+    priority: v.optional(feedbackPriority),
   },
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, FEEDBACK_PAGE_KEY, "create");
@@ -110,11 +123,12 @@ export const submit = mutation({
     }
 
     const now = Date.now();
-    return await ctx.db.insert("feedback", {
+    const feedbackId = await ctx.db.insert("feedback", {
       app: args.app,
       type: args.type,
       description,
       status: "nouveau",
+      priority: args.priority ?? "normale",
       authorClerkId: identity.subject,
       authorEmail: email,
       authorName: identity.name ?? undefined,
@@ -122,6 +136,17 @@ export const submit = mutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    await ctx.scheduler.runAfter(0, internal.mesoutilsEmails.sendFeedbackCreatedEmail, {
+      app: args.app,
+      feedbackType: args.type,
+      description,
+      authorName: identity.name ?? undefined,
+      authorEmail: email,
+      authorPhotoUrl: typeof identity.pictureUrl === "string" ? identity.pictureUrl : undefined,
+    });
+
+    return feedbackId;
   },
 });
 
@@ -279,6 +304,22 @@ export const addComment = mutation({
       createdAt: now,
     });
     await ctx.db.patch(args.id, { lastCommentAt: now, updatedAt: now });
+
+    // On prévient l'auteur qu'on lui a répondu — pas quand c'est lui qui
+    // écrit, il n'a pas besoin d'un email de son propre message.
+    const answeringSomeoneElse = !isAuthor(item, identity.subject, email);
+    if (answeringSomeoneElse && item.authorEmail) {
+      await ctx.scheduler.runAfter(0, internal.mesoutilsEmails.sendFeedbackCommentEmail, {
+        email: item.authorEmail,
+        authorName: item.authorName,
+        commenterName: feedbackDisplayName(identity),
+        commenterPhotoUrl: typeof identity.pictureUrl === "string" ? identity.pictureUrl : undefined,
+        body,
+        feedbackType: item.type,
+        description: item.description,
+      });
+    }
+
     return commentId;
   },
 });
@@ -322,6 +363,35 @@ export const list = query({
   },
 });
 
+/**
+ * Changement d'urgence d'un retour.
+ *
+ * Contrairement au statut (qui appartient à l'équipe produit), l'urgence est
+ * la parole de **l'auteur** : c'est lui qui sait si sa situation s'est
+ * aggravée. Il peut donc la revoir depuis « Mes retours » à tout moment.
+ * L'équipe produit y a aussi accès, pour arbitrer depuis le kanban.
+ */
+export const setPriority = mutation({
+  args: {
+    id: v.id("feedback"),
+    priority: feedbackPriority,
+  },
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, FEEDBACK_PAGE_KEY, "read");
+    const identity = await requireUser(ctx);
+    const item = await ctx.db.get(args.id);
+    if (!item) throw new Error("Retour introuvable.");
+
+    const email = normalizeEmail(identity.email);
+    const admin = await canModerateFeedback(ctx);
+    if (!admin && !isAuthor(item, identity.subject, email)) {
+      throw new Error("Ce retour ne vous appartient pas.");
+    }
+
+    await ctx.db.patch(args.id, { priority: args.priority, updatedAt: Date.now() });
+  },
+});
+
 /** Déplacement d'une carte dans le kanban — réservé à l'équipe produit. */
 export const setStatus = mutation({
   args: {
@@ -329,10 +399,25 @@ export const setStatus = mutation({
     status: feedbackStatus,
   },
   handler: async (ctx, args) => {
-    await requireFeedbackAdmin(ctx);
+    const identity = await requireFeedbackAdmin(ctx);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Retour introuvable.");
     await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() });
+
+    // Prévenir l'auteur au passage en « Terminée », et seulement au passage :
+    // re-déposer une carte déjà terminée dans la même colonne ne doit pas
+    // renvoyer un email. On ne s'envoie pas de mail à soi-même non plus.
+    const becameResolved = args.status === "termine" && existing.status !== "termine";
+    if (becameResolved && existing.authorEmail && existing.authorClerkId !== identity.subject) {
+      await ctx.scheduler.runAfter(0, internal.mesoutilsEmails.sendFeedbackResolvedEmail, {
+        email: existing.authorEmail,
+        authorName: existing.authorName,
+        resolvedByName: feedbackDisplayName(identity),
+        resolvedByPhotoUrl: typeof identity.pictureUrl === "string" ? identity.pictureUrl : undefined,
+        feedbackType: existing.type,
+        description: existing.description,
+      });
+    }
   },
 });
 

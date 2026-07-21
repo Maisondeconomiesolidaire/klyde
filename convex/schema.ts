@@ -40,6 +40,18 @@ export const feedbackStatus = v.union(
   v.literal("termine"),
 );
 
+/**
+ * App « Feedback » — urgence déclarée par l'auteur du retour. Optionnelle en
+ * base : les retours déposés avant cette fonctionnalité n'en ont pas, et le
+ * frontend les affiche alors en « Normale ».
+ */
+export const feedbackPriority = v.union(
+  v.literal("basse"),
+  v.literal("normale"),
+  v.literal("haute"),
+  v.literal("urgente"),
+);
+
 /** App « Bennes & Pro » — matériaux déposables. */
 export const bpMaterial = v.union(
   v.literal("Réemploi"),
@@ -617,6 +629,20 @@ export default defineSchema(
     .index("by_read_and_createdAt", ["read", "createdAt"])
     .index("by_createdAt", ["createdAt"])
     .index("by_requestId", ["requestId"]),
+
+  /**
+   * Repère de lecture des notifications CRM, **par utilisateur**.
+   *
+   * Le drapeau `read` de `notifications` est global : quand quelqu'un ouvrait
+   * la page, le compteur retombait à zéro pour toute l'équipe. On stocke donc
+   * ici, par compte Clerk, la date jusqu'à laquelle il a tout vu — une
+   * notification postérieure à ce repère lui est « non lue », indépendamment
+   * des autres. Un seul document par utilisateur, pas un par notification.
+   */
+  notificationReads: defineTable({
+    clerkId: v.string(),
+    lastReadAt: v.number(),
+  }).index("by_clerkId", ["clerkId"]),
 
   teamMembers: defineTable({
     name: v.string(),
@@ -1214,8 +1240,18 @@ export default defineSchema(
       v.literal("don"),
       v.literal("vente"),
       v.literal("echange"),
+      v.literal("location"),
     ),
     price: v.optional(v.number()),
+    // Unité de facturation d'une location : le prix s'entend « par période ».
+    rentalPeriod: v.optional(
+      v.union(
+        v.literal("jour"),
+        v.literal("semaine"),
+        v.literal("mois"),
+        v.literal("annee"),
+      ),
+    ),
     availableFrom: v.optional(v.number()),
     availableTo: v.optional(v.number()),
     images: v.array(v.id("_storage")),
@@ -1416,6 +1452,8 @@ export default defineSchema(
     style: v.optional(v.string()),
     location: v.optional(v.string()),
     sku: v.optional(v.string()),
+    // Article mis en vente sur Vinted (case cochée dans le stock Klyd).
+    vinted: v.optional(v.boolean()),
     quantity: v.number(),
     status: v.union(
       v.literal("stock"),
@@ -1808,6 +1846,8 @@ export default defineSchema(
     type: feedbackType,
     description: v.string(),
     status: feedbackStatus,
+    /** Urgence choisie par l'auteur, modifiable par lui après coup. */
+    priority: v.optional(feedbackPriority),
     /** Auteur : identité Clerk figée à la création. */
     authorClerkId: v.string(),
     authorEmail: v.string(),

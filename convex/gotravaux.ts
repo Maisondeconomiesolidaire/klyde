@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { accessAllows, customerFullName, requireCrmPermission, requireUser } from "./lib";
 import { buildAddressString, drivingDistanceKm, geocode } from "./livraison";
 import type { Id } from "./_generated/dataModel";
@@ -190,18 +190,30 @@ export const listVehicleTasks = query({
 });
 
 /**
- * Clôturer une maintenance impose de renseigner le temps passé et le prix des
- * pièces : sans ces deux valeurs, le coût de l'intervention n'existe pas et le
- * suivi budgétaire de la flotte serait faux. On accepte 0 € de pièces (rien à
- * remplacer), mais pas un temps nul — une intervention terminée a forcément
- * pris du temps.
+ * Informations exigées pour clôturer une maintenance.
+ *
+ * Une intervention terminée a forcément coûté du temps, s'est déroulée à une
+ * date et a laissé le véhicule à un kilométrage connu. Sans ces valeurs le
+ * suivi de la flotte est faux : coût d'entretien incalculable, historique sans
+ * date, et compteur véhicule qui dérive jusqu'au prochain relevé manuel.
+ *
+ * On accepte 0 € de pièces (rien à remplacer) mais pas un temps nul.
  */
-function ensureClosingCost(
-  laborMinutes: number | undefined,
-  partsCost: number | undefined,
-) {
+function ensureClosingRequirements(fields: {
+  laborMinutes: number | undefined;
+  partsCost: number | undefined;
+  dueDate: number | undefined;
+  odometerKm: number | undefined;
+}) {
+  const { laborMinutes, partsCost, dueDate, odometerKm } = fields;
   if (typeof laborMinutes !== "number" || !Number.isFinite(laborMinutes) || laborMinutes <= 0) {
     throw new Error("Renseignez le temps passé pour terminer la maintenance.");
+  }
+  if (typeof dueDate !== "number" || !Number.isFinite(dueDate)) {
+    throw new Error("Renseignez la date d'intervention pour terminer la maintenance.");
+  }
+  if (typeof odometerKm !== "number" || !Number.isFinite(odometerKm) || odometerKm < 0) {
+    throw new Error("Renseignez le kilométrage du véhicule pour terminer la maintenance.");
   }
   if (typeof partsCost !== "number" || !Number.isFinite(partsCost) || partsCost < 0) {
     throw new Error("Renseignez le prix des pièces pour terminer la maintenance.");
@@ -241,8 +253,8 @@ export const createVehicleTask = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    const vehicle = await ctx.db.get(args.vehicleId);
     if (typeof args.odometerKm === "number") {
-      const vehicle = await ctx.db.get(args.vehicleId);
       if (vehicle && (vehicle.odometerKm === undefined || args.odometerKm > vehicle.odometerKm)) {
         await ctx.db.patch(args.vehicleId, {
           odometerKm: args.odometerKm,
@@ -250,6 +262,21 @@ export const createVehicleTask = mutation({
         });
       }
     }
+
+    await ctx.scheduler.runAfter(0, internal.mesoutilsEmails.sendMaintenanceCreatedEmail, {
+      vehicleName: vehicle?.name ?? "Véhicule",
+      vehiclePlate: vehicle?.plate,
+      title: args.title.trim(),
+      description: args.description?.trim() || undefined,
+      priority: args.priority,
+      dueDate: args.dueDate,
+      endDate: args.endDate,
+      odometerKm: args.odometerKm,
+      createdByName: displayName(identity),
+      vehicleImageUrl: vehicle?.photoUrl,
+      vehicleImageStorageId: vehicle?.photo ? String(vehicle.photo) : undefined,
+    });
+
     return taskId;
   },
 });
@@ -317,7 +344,7 @@ export const updateVehicleTask = mutation({
     priority: v.optional(taskPriority),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    dueDate: v.optional(v.number()),
+    dueDate: v.optional(v.union(v.number(), v.null())),
     endDate: v.optional(v.union(v.number(), v.null())),
     odometerKm: v.optional(v.union(v.number(), v.null())),
     laborMinutes: v.optional(v.union(v.number(), v.null())),
@@ -336,8 +363,27 @@ export const updateVehicleTask = mutation({
       args.laborMinutes !== undefined ? args.laborMinutes ?? undefined : task.laborMinutes;
     const nextPartsCost =
       args.partsCost !== undefined ? args.partsCost ?? undefined : task.partsCost;
+    const nextDueDate = args.dueDate !== undefined ? args.dueDate ?? undefined : task.dueDate;
+    const nextOdometerKm =
+      args.odometerKm !== undefined ? args.odometerKm ?? undefined : task.odometerKm;
     if (args.status === "done") {
-      ensureClosingCost(nextLaborMinutes, nextPartsCost);
+      ensureClosingRequirements({
+        laborMinutes: nextLaborMinutes,
+        partsCost: nextPartsCost,
+        dueDate: nextDueDate,
+        odometerKm: nextOdometerKm,
+      });
+    }
+    // Passer « en cours » exige au minimum la date d'intervention : une
+    // maintenance qu'on démarre est planifiée à une date, et sans elle elle
+    // n'apparaît pas dans l'agenda flotte (filtré sur `dueDate`).
+    if (
+      args.status === "in_progress" &&
+      (typeof nextDueDate !== "number" || !Number.isFinite(nextDueDate))
+    ) {
+      throw new Error(
+        "Renseignez la date d'intervention pour passer la maintenance en cours.",
+      );
     }
 
     const patch: {
@@ -345,7 +391,7 @@ export const updateVehicleTask = mutation({
       priority?: "low" | "medium" | "high";
       title?: string;
       description?: string;
-      dueDate?: number;
+      dueDate?: number | undefined;
       endDate?: number | undefined;
       odometerKm?: number | undefined;
       laborMinutes?: number | undefined;
@@ -359,7 +405,7 @@ export const updateVehicleTask = mutation({
     if (args.priority !== undefined) patch.priority = args.priority;
     if (args.title !== undefined) patch.title = args.title.trim();
     if (args.description !== undefined) patch.description = args.description.trim() || undefined;
-    if (args.dueDate !== undefined) patch.dueDate = args.dueDate;
+    if (args.dueDate !== undefined) patch.dueDate = args.dueDate ?? undefined;
     if (args.endDate !== undefined) patch.endDate = args.endDate ?? undefined;
     if (args.odometerKm !== undefined) patch.odometerKm = args.odometerKm ?? undefined;
     if (args.laborMinutes !== undefined) patch.laborMinutes = args.laborMinutes ?? undefined;
@@ -368,11 +414,14 @@ export const updateVehicleTask = mutation({
       patch.attachments = args.attachments.length ? args.attachments : undefined;
     }
     await ctx.db.patch(args.taskId, patch);
-    if (typeof args.odometerKm === "number") {
+    // On répercute la valeur résultante, pas seulement celle reçue : clôturer
+    // une maintenance dont le kilométrage avait été saisi plus tôt doit quand
+    // même mettre le compteur du véhicule à jour.
+    if (typeof nextOdometerKm === "number") {
       const vehicle = await ctx.db.get(task.vehicleId);
-      if (vehicle && (vehicle.odometerKm === undefined || args.odometerKm > vehicle.odometerKm)) {
+      if (vehicle && (vehicle.odometerKm === undefined || nextOdometerKm > vehicle.odometerKm)) {
         await ctx.db.patch(task.vehicleId, {
-          odometerKm: args.odometerKm,
+          odometerKm: nextOdometerKm,
           odometerUpdatedAt: new Date(now).toISOString(),
         });
       }
