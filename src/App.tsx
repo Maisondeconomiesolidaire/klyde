@@ -9,8 +9,6 @@ import {
   Heart,
   ImagePlus,
   Kanban,
-  LayoutGrid,
-  List,
   Loader2,
   Package,
   Pencil,
@@ -39,7 +37,6 @@ import { useUpload } from "./lib/useUpload";
 
 type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
 type AppTab = "stock" | "suivi";
-type StockMode = "cards" | "list";
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
 type ShopRoute = string;
@@ -464,6 +461,48 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+/** Chips multi-sélection (repris du filtre catégories de la boutique recyclerie). */
+function MultiSelectChips({
+  options,
+  selected,
+  onChange,
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const chipClass = (active: boolean) =>
+    cn(
+      "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+      active
+        ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
+        : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--muted)]",
+    );
+  const toggle = (option: string) =>
+    onChange(
+      selected.includes(option)
+        ? selected.filter((item) => item !== option)
+        : [...selected, option],
+    );
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button type="button" onClick={() => onChange([])} className={chipClass(selected.length === 0)}>
+        Toutes
+      </button>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => toggle(option)}
+          className={chipClass(selected.includes(option))}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function revokeLocalPreview(url: string) {
   if (url.startsWith("blob:")) URL.revokeObjectURL(url);
 }
@@ -788,7 +827,6 @@ function ArticleThumb({ item }: { item: ListedItem }) {
 function AppContent() {
   const { user } = useUser();
   const [activeTab, setActiveTab] = useState<AppTab>("stock");
-  const [stockMode, setStockMode] = useState<StockMode>("cards");
   const [trackingTab, setTrackingTab] = useState<TrackingTab>("process");
   const [form, setForm] = useState<FormState>(initialForm);
   const [editingId, setEditingId] = useState<Id<"klydeItems"> | null>(null);
@@ -799,10 +837,8 @@ function AppContent() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [subcategoryFilter, setSubcategoryFilter] = useState("all");
-  const [genderFilter, setGenderFilter] = useState("all");
-  const [sizeFilter, setSizeFilter] = useState("all");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState("");
   const [extraDetails, setExtraDetails] = useState("");
   const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
@@ -849,18 +885,21 @@ function AppContent() {
   const visibleItems = useMemo(
     () =>
       allItems.filter((item) => {
-        if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
-        if (subcategoryFilter !== "all" && item.subcategory !== subcategoryFilter) return false;
-        if (genderFilter !== "all" && item.gender !== genderFilter) return false;
-        if (sizeFilter !== "all" && item.size !== sizeFilter) return false;
+        if (selectedCategories.length > 0 && !selectedCategories.includes(item.category)) {
+          return false;
+        }
+        if (selectedLocation && (item.location ?? "") !== selectedLocation) return false;
         return true;
       }),
-    [allItems, categoryFilter, genderFilter, sizeFilter, subcategoryFilter],
+    [allItems, selectedCategories, selectedLocation],
   );
-  const availableSubcategories =
-    categoryFilter !== "all" && categoryFilter in categoryTree
-      ? categoryTree[categoryFilter as keyof typeof categoryTree]
-      : Array.from(new Set(categories.flatMap((category) => categoryTree[category])));
+  const locationOptions = useMemo(
+    () =>
+      Array.from(new Set(allItems.map((item) => item.location ?? "").filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "fr", { numeric: true }),
+      ),
+    [allItems],
+  );
   const processItems = useMemo(
     () => visibleItems.filter((item) => processColumns.some((column) => column.status === itemStatus(item))),
     [visibleItems],
@@ -1511,94 +1550,56 @@ function AppContent() {
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
-          <div className="mb-5 grid gap-3 lg:grid-cols-[minmax(280px,420px)_1fr] lg:items-start">
-            <div className="flex w-full items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--input)] px-3.5">
-              <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
-              <input
-                className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Rechercher un article"
-              />
-            </div>
-
-            {activeTab === "stock" ? (
-              <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1.45fr_0.95fr]">
-                  <select
-                    value={categoryFilter}
-                    onChange={(event) => {
-                      setCategoryFilter(event.target.value);
-                      setSubcategoryFilter("all");
-                    }}
-                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                  >
-                    <option value="all">Toutes catégories</option>
-                    {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={subcategoryFilter}
-                    onChange={(event) => setSubcategoryFilter(event.target.value)}
-                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                  >
-                    <option value="all">Toutes sous-catégories</option>
-                    {availableSubcategories.map((subcategory) => (
-                      <option key={subcategory} value={subcategory}>
-                        {subcategory}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={genderFilter}
-                    onChange={(event) => setGenderFilter(event.target.value)}
-                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
-                  >
-                    <option value="all">Tous genres</option>
-                    {genders.map((gender) => (
-                      <option key={gender} value={gender}>
-                        {gender}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={sizeFilter}
-                    onChange={(event) => setSizeFilter(event.target.value)}
-                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm sm:w-64"
-                  >
-                    <option value="all">Toutes tailles</option>
-                    {sizes.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="inline-flex rounded-xl border border-[var(--border)] p-1">
-                    <button
-                      type="button"
-                      onClick={() => setStockMode("cards")}
-                      className={cn("rounded-lg px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
-                      aria-label="Mode cards"
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStockMode("list")}
-                      className={cn("rounded-lg px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
-                      aria-label="Mode liste"
-                    >
-                      <List className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+          {activeTab === "stock" ? (
+            <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+              <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
+                <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <input
+                  className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="Rechercher par titre, référence…"
+                />
               </div>
-            ) : (
+              <div>
+                <p className="mb-2 text-sm font-medium text-[var(--muted-foreground)]">
+                  Filtrer par catégorie
+                </p>
+                <MultiSelectChips
+                  options={categories}
+                  selected={selectedCategories}
+                  onChange={setSelectedCategories}
+                />
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium text-[var(--muted-foreground)]">
+                  Filtrer par emplacement
+                </p>
+                <select
+                  value={selectedLocation}
+                  onChange={(event) => setSelectedLocation(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm outline-none focus:border-[var(--primary)]"
+                >
+                  <option value="">Tous les emplacements</option>
+                  {locationOptions.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex w-full items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--input)] px-3.5 sm:max-w-md">
+                <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <input
+                  className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="Rechercher un article"
+                />
+              </div>
               <div className="inline-flex w-fit rounded-md border border-[var(--border)] p-1">
                 <button
                   type="button"
@@ -1615,8 +1616,8 @@ function AppContent() {
                   Gagné
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {items === undefined ? (
             <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
@@ -1627,10 +1628,6 @@ function AppContent() {
             visibleItems.length === 0 ? (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-[var(--muted-foreground)]">
                 Aucun article.
-              </div>
-            ) : stockMode === "cards" ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {visibleItems.map((item) => articleCard(item))}
               </div>
             ) : (
               <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
