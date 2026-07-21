@@ -11,7 +11,6 @@ import {
   Kanban,
   Loader2,
   Package,
-  Pencil,
   Scissors,
   Search,
   ShieldCheck,
@@ -842,10 +841,12 @@ function AppContent() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [editingId, setEditingId] = useState<Id<"klydeItems"> | null>(null);
   const [detailItemId, setDetailItemId] = useState<Id<"klydeItems"> | null>(null);
-  const [detailMode, setDetailMode] = useState<DetailMode>("article");
   const [deleteTarget, setDeleteTarget] = useState<ListedItem | null>(null);
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [articleSheetOpen, setArticleSheetOpen] = useState(false);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [justSaved, setJustSaved] = useState(false);
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -923,9 +924,16 @@ function AppContent() {
     () => visibleItems.find((item) => item._id === detailItemId) ?? null,
     [detailItemId, visibleItems],
   );
+  // Article en cours d'édition dans la fiche : lu sur `allItems` (pas
+  // `visibleItems`) pour que la fiche ne se ferme pas si un filtre l'exclut.
+  const sheetItem = useMemo(
+    () => allItems.find((item) => item._id === editingId) ?? null,
+    [allItems, editingId],
+  );
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+    if (justSaved) setJustSaved(false);
   }
 
   function resetCustomBackground() {
@@ -942,9 +950,7 @@ function AppContent() {
     setDrawerOpen(true);
   }
 
-  function openEditArticle(item: ListedItem) {
-    setDetailItemId(null);
-    setEditingId(item._id);
+  function fillFormFromItem(item: ListedItem) {
     setForm({
       photos: item.photos,
       previewUrls: item.photoUrls,
@@ -968,10 +974,31 @@ function AppContent() {
       aiConfidence: item.aiConfidence,
       aiNotes: item.aiNotes ?? "",
     });
+  }
+
+  /** Ouvre la fiche article plein écran, champs directement modifiables. */
+  function openArticleSheet(item: ListedItem) {
+    setDetailItemId(null);
+    setEditingId(item._id);
+    fillFormFromItem(item);
+    setActivePhotoIndex(0);
+    setJustSaved(false);
     setExtraDetails("");
     resetCustomBackground();
     setError(null);
-    setDrawerOpen(true);
+    setArticleSheetOpen(true);
+  }
+
+  function closeArticleSheet() {
+    form.previewUrls.forEach(revokeLocalPreview);
+    setArticleSheetOpen(false);
+    setEditingPhotoIndex(null);
+    setEditingId(null);
+    setForm(initialForm);
+    setExtraDetails("");
+    setJustSaved(false);
+    resetCustomBackground();
+    setError(null);
   }
 
   function closeDrawer() {
@@ -986,8 +1013,11 @@ function AppContent() {
   }
 
   function openDetail(item: ListedItem, mode: DetailMode) {
+    if (mode === "article") {
+      openArticleSheet(item);
+      return;
+    }
     setDetailItemId(item._id);
-    setDetailMode(mode);
     setTrackingNoteDraft(item.trackingNotes ?? "");
   }
 
@@ -1027,6 +1057,7 @@ function AppContent() {
     await removeItem({ id: targetId });
     setDeleteTarget(null);
     if (detailItemId === targetId) closeDetail();
+    if (articleSheetOpen && editingId === targetId) closeArticleSheet();
   }
 
   async function moveItem(id: Id<"klydeItems">, status: KlydeStatus) {
@@ -1189,6 +1220,31 @@ function AppContent() {
     }
   }
 
+  function buildItemPayload() {
+    return {
+      photos: form.photos,
+      title: form.title,
+      description: form.description,
+      category: form.category,
+      subcategory: form.subcategory || undefined,
+      brand: form.brand || undefined,
+      size: (showSizeField && form.size) || undefined,
+      condition: form.condition,
+      color: form.color || undefined,
+      material: (showMaterialField && form.material) || undefined,
+      price: asNumber(form.price),
+      parcelSize: form.parcelSize || undefined,
+      gender: form.gender || undefined,
+      style: form.style || undefined,
+      location: form.location || undefined,
+      sku: form.sku || undefined,
+      vinted: form.vinted,
+      quantity: asNumber(form.quantity),
+      aiConfidence: form.aiConfidence,
+      aiNotes: form.aiNotes || undefined,
+    };
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (form.photos.length === 0) {
@@ -1198,34 +1254,33 @@ function AppContent() {
     setError(null);
     setBusy("save");
     try {
-      const payload = {
-        photos: form.photos,
-        title: form.title,
-        description: form.description,
-        category: form.category,
-        subcategory: form.subcategory || undefined,
-        brand: form.brand || undefined,
-        size: (showSizeField && form.size) || undefined,
-        condition: form.condition,
-        color: form.color || undefined,
-        material: (showMaterialField && form.material) || undefined,
-        price: asNumber(form.price),
-        parcelSize: form.parcelSize || undefined,
-        gender: form.gender || undefined,
-        style: form.style || undefined,
-        location: form.location || undefined,
-        sku: form.sku || undefined,
-        vinted: form.vinted,
-        quantity: asNumber(form.quantity),
-        aiConfidence: form.aiConfidence,
-        aiNotes: form.aiNotes || undefined,
-      };
+      const payload = buildItemPayload();
       if (editingId) {
         await updateItem({ id: editingId, ...payload });
       } else {
         await createItem(payload);
       }
       closeDrawer();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Enregistrement impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Enregistre la fiche article sans la fermer (édition en place). */
+  async function saveArticleSheet() {
+    if (!editingId) return;
+    if (form.photos.length === 0) {
+      setError("Ajoute au moins une photo.");
+      return;
+    }
+    setError(null);
+    setBusy("save");
+    try {
+      await updateItem({ id: editingId, ...buildItemPayload() });
+      setJustSaved(true);
+      window.setTimeout(() => setJustSaved(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enregistrement impossible.");
     } finally {
@@ -1755,9 +1810,7 @@ function AppContent() {
           <section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--card)]">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
               <div>
-                <h2 className="font-semibold">
-                  {detailMode === "demande" ? "Fiche demande" : "Fiche article"}
-                </h2>
+                <h2 className="font-semibold">Fiche demande</h2>
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                   {statusLabel(detailItem.status)}
                 </p>
@@ -1807,28 +1860,26 @@ function AppContent() {
                   ))}
                 </div>
 
-                {detailMode === "demande" ? (
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium" htmlFor="tracking-notes">
-                      Notes de suivi
-                    </label>
-                    <textarea
-                      id="tracking-notes"
-                      value={trackingNoteDraft}
-                      onChange={(event) => setTrackingNoteDraft(event.target.value)}
-                      className="min-h-32 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
-                      placeholder="Ajouter une note, un retour client, un numéro de suivi..."
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void saveTrackingNotes()}
-                      disabled={busy === "notes"}
-                      className="h-10 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {busy === "notes" ? "Enregistrement..." : "Enregistrer les notes"}
-                    </button>
-                  </div>
-                ) : null}
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium" htmlFor="tracking-notes">
+                    Notes de suivi
+                  </label>
+                  <textarea
+                    id="tracking-notes"
+                    value={trackingNoteDraft}
+                    onChange={(event) => setTrackingNoteDraft(event.target.value)}
+                    className="min-h-32 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    placeholder="Ajouter une note, un retour client, un numéro de suivi..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveTrackingNotes()}
+                    disabled={busy === "notes"}
+                    className="h-10 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {busy === "notes" ? "Enregistrement..." : "Enregistrer les notes"}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1842,18 +1893,375 @@ function AppContent() {
                   Supprimer
                 </button>
               ) : null}
-              {detailMode === "article" && canUpdate ? (
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {articleSheetOpen ? (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--background)]">
+          {/* Barre supérieure : retour, statut, enregistrement en place. */}
+          <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--background)]/90 backdrop-blur">
+            <div className="mx-auto flex min-h-16 w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
+              <button
+                type="button"
+                onClick={closeArticleSheet}
+                className="rounded-full border border-[var(--border)] p-2 transition hover:bg-[var(--muted)]"
+                aria-label="Retour au stock"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-base font-semibold">Fiche article</h2>
+                  {sheetItem ? <StatusPill status={sheetItem.status} /> : null}
+                  {form.vinted ? <VintedBadge /> : null}
+                </div>
+                <p className="truncate text-xs text-[var(--muted-foreground)]">
+                  {form.sku ? `Réf. ${form.sku}` : "Référence en attente"}
+                </p>
+              </div>
+              {canDelete && sheetItem ? (
                 <button
                   type="button"
-                  onClick={() => openEditArticle(detailItem)}
-                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white"
+                  onClick={() => requestDelete(sheetItem)}
+                  className="hidden rounded-full border border-[var(--border)] p-2.5 text-red-600 transition hover:bg-red-50 sm:inline-flex"
+                  aria-label="Supprimer l’article"
                 >
-                  <Pencil className="h-4 w-4" />
-                  Modifier
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void saveArticleSheet()}
+                disabled={!canUpdate || busy === "save"}
+                className={cn(
+                  "inline-flex h-10 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold text-white transition disabled:opacity-50",
+                  justSaved ? "bg-emerald-600" : "bg-[var(--primary)]",
+                )}
+              >
+                {busy === "save" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Enregistrement…
+                  </>
+                ) : justSaved ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Enregistré
+                  </>
+                ) : (
+                  "Enregistrer"
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start">
+            {/* Colonne photos : grande image + miniatures, style boutique. */}
+            <div className="grid gap-3 lg:sticky lg:top-24">
+              <div className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--muted)]">
+                {form.previewUrls.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditingPhotoIndex(Math.min(activePhotoIndex, form.previewUrls.length - 1))}
+                    className="group block aspect-square w-full"
+                    aria-label="Rogner la photo"
+                  >
+                    <img
+                      src={form.previewUrls[Math.min(activePhotoIndex, form.previewUrls.length - 1)]}
+                      alt={form.title}
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white opacity-0 transition group-hover:opacity-100">
+                      <Scissors className="h-3.5 w-3.5" />
+                      Rogner
+                    </span>
+                  </button>
+                ) : (
+                  <div className="flex aspect-square w-full items-center justify-center text-[var(--muted-foreground)]">
+                    <Package className="h-10 w-10" />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-5 gap-2">
+                {form.previewUrls.map((url, index) => (
+                  <div key={`${url}-${index}`} className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => setActivePhotoIndex(index)}
+                      className={cn(
+                        "block w-full overflow-hidden rounded-xl border-2 transition",
+                        index === activePhotoIndex
+                          ? "border-[var(--primary)]"
+                          : "border-transparent hover:border-[var(--border)]",
+                      )}
+                      aria-label={`Voir la photo ${index + 1}`}
+                    >
+                      <img src={url} alt="" className="aspect-square w-full object-cover" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removePhoto(index);
+                        setActivePhotoIndex((current) => (current >= index && current > 0 ? current - 1 : current));
+                      }}
+                      className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                      aria-label="Supprimer la photo"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] text-center text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]">
+                  {busy === "upload" ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-5 w-5" />
+                  )}
+                  <span className="mt-1 text-[10px] font-semibold">Ajouter</span>
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(event) => void handleFiles(event.target.files)}
+                  />
+                </label>
+              </div>
+
+              {/* Retouche IA : détourage sur fond photo + analyse. */}
+              <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Retouche IA
+                </div>
+                <textarea
+                  value={extraDetails}
+                  onChange={(event) => setExtraDetails(event.target.value)}
+                  className="min-h-16 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                  placeholder="Précision optionnelle pour l’IA"
+                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void removeBackgrounds()}
+                    disabled={Boolean(busy) || form.photos.length === 0}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    {busy === "background" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Scissors className="h-4 w-4" />
+                    )}
+                    Détourer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runAnalysis()}
+                    disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+                    title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {busy === "analysis" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    Analyser
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Colonne détails : tous les champs directement modifiables. */}
+            <div className="grid gap-5">
+              {error ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Titre</span>
+                  <input
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2.5 text-lg font-semibold outline-none focus:border-[var(--primary)]"
+                    value={form.title}
+                    onChange={(event) => update("title", event.target.value)}
+                    placeholder="Titre de l’article"
+                  />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Prix</span>
+                  <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                    <input
+                      className="h-12 w-full bg-transparent text-2xl font-bold outline-none"
+                      inputMode="decimal"
+                      value={form.price}
+                      onChange={(event) => update("price", event.target.value)}
+                      placeholder="0"
+                    />
+                    <span className="text-xl font-semibold text-[var(--muted-foreground)]">€</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
+                <h3 className="text-sm font-semibold">Caractéristiques</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Catégorie">
+                    <select
+                      className={inputClass()}
+                      value={form.category}
+                      onChange={(event) => {
+                        update("category", event.target.value);
+                        update("subcategory", "");
+                      }}
+                    >
+                      {categories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Sous-catégorie">
+                    <select
+                      className={inputClass()}
+                      value={form.subcategory}
+                      onChange={(event) => update("subcategory", event.target.value)}
+                    >
+                      <option value="">À préciser</option>
+                      {formSubcategories.map((subcategory) => (
+                        <option key={subcategory} value={subcategory}>
+                          {subcategory}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Marque">
+                    <input
+                      className={inputClass()}
+                      value={form.brand}
+                      onChange={(event) => update("brand", event.target.value)}
+                    />
+                  </Field>
+                  {showSizeField ? (
+                    <Field label="Taille">
+                      <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
+                        <option value="">À préciser</option>
+                        {sizes.map((size) => (
+                          <option key={size} value={size}>
+                            {size}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : null}
+                  <Field label="État">
+                    <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
+                      {conditions.map((condition) => (
+                        <option key={condition}>{condition}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Couleur">
+                    <select className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)}>
+                      <option value="">À préciser</option>
+                      {colors.map((color) => (
+                        <option key={color} value={color}>
+                          {color}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {showMaterialField ? (
+                    <Field label="Matière">
+                      <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                        <option value="">À préciser</option>
+                        {materials.map((material) => (
+                          <option key={material} value={material}>
+                            {material}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : null}
+                  <Field label="Genre">
+                    <select className={inputClass()} value={form.gender} onChange={(event) => update("gender", event.target.value)}>
+                      <option value="">À préciser</option>
+                      {genders.map((gender) => (
+                        <option key={gender} value={gender}>
+                          {gender}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Style">
+                    <input className={inputClass()} value={form.style} onChange={(event) => update("style", event.target.value)} />
+                  </Field>
+                  <Field label="Colis">
+                    <select className={inputClass()} value={form.parcelSize} onChange={(event) => update("parcelSize", event.target.value)}>
+                      <option>Petit</option>
+                      <option>Moyen</option>
+                      <option>Grand</option>
+                    </select>
+                  </Field>
+                  <Field label="Emplacement">
+                    <input className={inputClass()} value={form.location} onChange={(event) => update("location", event.target.value)} />
+                  </Field>
+                  <Field label="Référence">
+                    <input className={inputClass()} value={form.sku} onChange={(event) => update("sku", event.target.value)} />
+                  </Field>
+                  <Field label="Quantité">
+                    <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
+                  </Field>
+                </div>
+              </div>
+
+              <div className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
+                <label className="grid gap-1.5">
+                  <span className="text-sm font-semibold">Description</span>
+                  <textarea
+                    className="min-h-32 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm leading-6 outline-none focus:border-[var(--primary)]"
+                    value={form.description}
+                    onChange={(event) => update("description", event.target.value)}
+                  />
+                </label>
+                <Field label="Notes IA">
+                  <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
+                </Field>
+              </div>
+
+              <label className="flex items-center justify-between gap-3 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
+                <span className="grid gap-0.5">
+                  <span className="text-sm font-semibold">Mis en vente sur Vinted</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    Affiche la pastille « Vinted » sur la fiche stock.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={form.vinted}
+                  onChange={(event) => update("vinted", event.target.checked)}
+                  className="h-5 w-5 rounded border-[var(--border)] accent-[var(--primary)]"
+                />
+              </label>
+
+              {canDelete && sheetItem ? (
+                <button
+                  type="button"
+                  onClick={() => requestDelete(sheetItem)}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-red-200 px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50 sm:hidden"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Supprimer l’article
                 </button>
               ) : null}
             </div>
-          </section>
+          </div>
         </div>
       ) : null}
 
@@ -2191,7 +2599,7 @@ function AppContent() {
         </div>
       ) : null}
 
-      {drawerOpen && editingPhotoIndex !== null && form.previewUrls[editingPhotoIndex] ? (
+      {(drawerOpen || articleSheetOpen) && editingPhotoIndex !== null && form.previewUrls[editingPhotoIndex] ? (
         <PhotoEditor
           url={form.previewUrls[editingPhotoIndex]}
           upload={upload}
