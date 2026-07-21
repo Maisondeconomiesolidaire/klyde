@@ -1540,39 +1540,39 @@ function AppContent() {
   return (
     <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <HelpButton />
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] p-4 md:flex">
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <Logo />
-            <AppSwitcher current="klyde" />
-          </div>
-          <nav className="mt-8 grid gap-1">
-            {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
-            {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
-          </nav>
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] md:flex">
+        <div className="flex items-center justify-between gap-2 p-4">
+          <Logo />
+          <AppSwitcher current="klyde" />
         </div>
-        <button
-          type="button"
-          onClick={() => goTo("/boutique")}
-          className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white"
-        >
-          <ShoppingBag className="h-4 w-4" />
-          Voir la boutique
-        </button>
-        <button
-          type="button"
-          onClick={() => goTo("/profil")}
-          className="mt-3 flex items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left"
-        >
-          <KlydeUserAvatar />
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold">{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
-            <span className="block truncate text-xs text-[var(--muted-foreground)]">{user?.primaryEmailAddress?.emailAddress}</span>
-          </span>
-        </button>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-4">
+          {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
+          {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
+        </nav>
+        <div className="space-y-3 border-t border-[var(--border)] p-4">
+          <button
+            type="button"
+            onClick={() => goTo("/boutique")}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Voir la boutique
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo("/profil")}
+            className="flex w-full items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left"
+          >
+            <KlydeUserAvatar />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
+              <span className="block truncate text-xs text-[var(--muted-foreground)]">{user?.primaryEmailAddress?.emailAddress}</span>
+            </span>
+          </button>
+        </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 md:pl-56">
         <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 py-3 md:px-6">
           <div className="shrink-0 md:hidden">
             <Logo />
@@ -1600,7 +1600,7 @@ function AppContent() {
             <div className="md:hidden">
               <AppSwitcher current="klyde" />
             </div>
-            <button type="button" onClick={() => goTo("/profil")} className="rounded-full">
+            <button type="button" onClick={() => goTo("/profil")} className="rounded-full md:hidden">
               <KlydeUserAvatar />
             </button>
           </div>
@@ -2020,12 +2020,23 @@ function AppContent() {
                   ) : (
                     <ImagePlus className="h-5 w-5" />
                   )}
-                  <span className="mt-1 text-[10px] font-semibold">Ajouter</span>
+                  <span className="mt-1 text-[10px] font-semibold">Importer</span>
                   <input
                     className="sr-only"
                     type="file"
                     accept="image/*"
                     multiple
+                    onChange={(event) => void handleFiles(event.target.files)}
+                  />
+                </label>
+                <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] text-center text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] sm:hidden">
+                  <Camera className="h-5 w-5" />
+                  <span className="mt-1 text-[10px] font-semibold">Photo</span>
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
                     onChange={(event) => void handleFiles(event.target.files)}
                   />
                 </label>
@@ -2312,17 +2323,30 @@ function AppContent() {
             </div>
 
             <div className="mx-auto grid w-full max-w-3xl gap-4 p-4 sm:p-6">
-              <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--card)] p-4 text-center">
-                <ImagePlus className="h-7 w-7 text-[var(--muted-foreground)]" />
-                <span className="mt-2 text-sm font-medium">Ajouter des photos</span>
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(event) => void handleFiles(event.target.files)}
-                />
-              </label>
+              <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
+                <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--card)] p-4 text-center">
+                  <ImagePlus className="h-7 w-7 text-[var(--muted-foreground)]" />
+                  <span className="mt-2 text-sm font-medium">Importer des photos</span>
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(event) => void handleFiles(event.target.files)}
+                  />
+                </label>
+                <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--card)] p-4 text-center sm:min-h-0">
+                  <Camera className="h-7 w-7 text-[var(--muted-foreground)]" />
+                  <span className="mt-2 text-sm font-medium">Prendre une photo</span>
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(event) => void handleFiles(event.target.files)}
+                  />
+                </label>
+              </div>
 
               {form.previewUrls.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
