@@ -54,7 +54,8 @@ const TRYON_MODELS: TryOnModel[] = Object.entries(
 )
   .map(([path, src]) => {
     const file = path.split("/").pop() ?? path;
-    const name = file.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+    const raw = file.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+    const name = raw.replace(/\b\w/g, (c) => c.toUpperCase());
     return { name: name || file, src };
   })
   .sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true }));
