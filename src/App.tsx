@@ -38,27 +38,6 @@ import { useUpload } from "./lib/useUpload";
 
 type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
 type AppTab = "stock" | "suivi";
-
-/**
- * Mannequins pour l'essayage virtuel FASHN. Détectés automatiquement au build
- * dans `src/assets/tryon-models/` : le nom du fichier devient le nom du modèle.
- * Ajouter/retirer une image suffit — aucun code à modifier.
- */
-type TryOnModel = { name: string; src: string };
-const TRYON_MODELS: TryOnModel[] = Object.entries(
-  import.meta.glob("./assets/tryon-models/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}", {
-    eager: true,
-    query: "?url",
-    import: "default",
-  }) as Record<string, string>,
-)
-  .map(([path, src]) => {
-    const file = path.split("/").pop() ?? path;
-    const raw = file.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
-    const name = raw.replace(/\b\w/g, (c) => c.toUpperCase());
-    return { name: name || file, src };
-  })
-  .sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true }));
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
 type ShopRoute = string;
@@ -877,8 +856,7 @@ function AppContent() {
   const [extraDetails, setExtraDetails] = useState("");
   const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
-  // Essayage virtuel FASHN : mannequin choisi + qualité de sortie.
-  const [tryOnModelSrc, setTryOnModelSrc] = useState<string>(TRYON_MODELS[0]?.src ?? "");
+  // Essayage génératif FASHN : qualité de sortie.
   const [tryOnResolution, setTryOnResolution] = useState<"1k" | "2k" | "4k">("2k");
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
@@ -1266,8 +1244,9 @@ function AppContent() {
   }
 
   /**
-   * Essayage virtuel FASHN : envoie la photo à plat sélectionnée et ajoute
-   * l'image générée (article porté par un mannequin) aux photos de l'article.
+   * Essayage génératif FASHN : envoie la photo à plat sélectionnée + les
+   * attributs de l'article ; FASHN crée un mannequin et un univers assortis,
+   * dont l'image est ajoutée aux photos de l'article.
    */
   async function runTryOn(sourceIndex: number) {
     const storageId = form.photos[sourceIndex];
@@ -1275,19 +1254,20 @@ function AppContent() {
       setError("Ajoute une photo de l'article avant de générer l'essayage.");
       return;
     }
-    if (!tryOnModelSrc) {
-      setError("Aucun mannequin disponible. Ajoute des modèles pour générer un essayage.");
-      return;
-    }
     setError(null);
     setBusy("tryon");
     try {
-      // URL absolue du mannequin pour que FASHN puisse la récupérer.
-      const modelImageUrl = new URL(tryOnModelSrc, window.location.origin).href;
       const result = await generateTryOn({
         storageId,
-        modelImageUrl,
         resolution: tryOnResolution,
+        garment: {
+          category: form.category || undefined,
+          subcategory: form.subcategory || undefined,
+          gender: form.gender || undefined,
+          style: form.style || undefined,
+          color: form.color || undefined,
+          brand: form.brand || undefined,
+        },
       });
       if (!result.url) throw new Error("Image générée introuvable.");
       const generatedUrl = result.url;
@@ -1406,53 +1386,9 @@ function AppContent() {
         Essayage porté
       </div>
 
-      {TRYON_MODELS.length === 0 ? (
-        <p className="rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] p-3 text-[11px] leading-4 text-[var(--muted-foreground)]">
-          Aucun mannequin configuré. Ajoutez des images dans
-          <span className="font-medium"> src/assets/tryon-models/ </span>
-          pour pouvoir générer un essayage.
-        </p>
-      ) : (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-[var(--muted-foreground)]">Mannequin</span>
-            <span className="text-xs font-semibold text-[var(--foreground)]">
-              {TRYON_MODELS.find((model) => model.src === tryOnModelSrc)?.name ?? ""}
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {TRYON_MODELS.map((model) => {
-              const selected = tryOnModelSrc === model.src;
-              return (
-                <button
-                  key={model.src}
-                  type="button"
-                  onClick={() => setTryOnModelSrc(model.src)}
-                  title={model.name}
-                  className={cn(
-                    "overflow-hidden rounded-xl border-2 text-left transition",
-                    selected
-                      ? "border-[var(--primary)]"
-                      : "border-transparent hover:border-[var(--border)]",
-                  )}
-                >
-                  <img src={model.src} alt={model.name} className="aspect-[3/4] w-full object-cover" />
-                  <span
-                    className={cn(
-                      "block truncate px-1.5 py-1 text-xs font-semibold",
-                      selected
-                        ? "bg-[var(--primary)] text-white"
-                        : "bg-[var(--background)] text-[var(--foreground)]",
-                    )}
-                  >
-                    {model.name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <p className="text-[11px] leading-4 text-[var(--muted-foreground)]">
+        FASHN crée un mannequin et un univers sur mesure, assortis au type et au style de l’article.
+      </p>
 
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-[var(--muted-foreground)]">Qualité</span>
@@ -1478,7 +1414,7 @@ function AppContent() {
       <button
         type="button"
         onClick={() => void runTryOn(sourceIndex)}
-        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze || TRYON_MODELS.length === 0}
+        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
         title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
         className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
       >
