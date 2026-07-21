@@ -1868,25 +1868,25 @@ function AppContent() {
       ) : null}
 
       {drawerOpen ? (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/20">
-          <form
-            onSubmit={submit}
-            className="h-full w-full overflow-y-auto bg-[var(--background)] sm:max-w-2xl sm:border-l sm:border-[var(--border)]"
-          >
-            <div className="sticky top-0 z-10 flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 py-3 sm:px-4">
-              <h2 className="min-w-0 text-base font-semibold">
-                {editingId ? "Modifier l’article" : "Nouvel article"}
-              </h2>
-              <button
-                type="button"
-                onClick={closeDrawer}
-                className="rounded-md border border-[var(--border)] p-2"
-              >
-                <X className="h-4 w-4" />
-              </button>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--background)]">
+          <form onSubmit={submit} className="flex min-h-full w-full flex-col bg-[var(--background)]">
+            <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--background)]">
+              <div className="mx-auto flex min-h-16 w-full max-w-3xl items-center gap-3 px-4 py-3 sm:px-6">
+                <button
+                  type="button"
+                  onClick={closeDrawer}
+                  className="rounded-md border border-[var(--border)] p-2"
+                  aria-label="Retour"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h2 className="min-w-0 truncate text-base font-semibold">
+                  {editingId ? "Modifier l’article" : "Nouvel article"}
+                </h2>
+              </div>
             </div>
 
-            <div className="grid gap-4 p-4">
+            <div className="mx-auto grid w-full max-w-3xl gap-4 p-4 sm:p-6">
               <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--card)] p-4 text-center">
                 <ImagePlus className="h-7 w-7 text-[var(--muted-foreground)]" />
                 <span className="mt-2 text-sm font-medium">Ajouter des photos</span>
