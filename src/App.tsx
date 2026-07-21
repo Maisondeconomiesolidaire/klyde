@@ -1399,27 +1399,42 @@ function AppContent() {
         </p>
       ) : (
         <>
-          <span className="text-xs font-medium text-[var(--muted-foreground)]">Mannequin</span>
-          <div className="grid grid-cols-4 gap-2">
-            {TRYON_MODELS.map((model) => (
-              <button
-                key={model.src}
-                type="button"
-                onClick={() => setTryOnModelSrc(model.src)}
-                title={model.name}
-                className={cn(
-                  "overflow-hidden rounded-xl border-2 transition",
-                  tryOnModelSrc === model.src
-                    ? "border-[var(--primary)]"
-                    : "border-transparent hover:border-[var(--border)]",
-                )}
-              >
-                <img src={model.src} alt={model.name} className="aspect-[3/4] w-full object-cover" />
-                <span className="block truncate bg-[var(--background)] px-1 py-0.5 text-[10px] font-medium">
-                  {model.name}
-                </span>
-              </button>
-            ))}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-[var(--muted-foreground)]">Mannequin</span>
+            <span className="text-xs font-semibold text-[var(--foreground)]">
+              {TRYON_MODELS.find((model) => model.src === tryOnModelSrc)?.name ?? ""}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {TRYON_MODELS.map((model) => {
+              const selected = tryOnModelSrc === model.src;
+              return (
+                <button
+                  key={model.src}
+                  type="button"
+                  onClick={() => setTryOnModelSrc(model.src)}
+                  title={model.name}
+                  className={cn(
+                    "overflow-hidden rounded-xl border-2 text-left transition",
+                    selected
+                      ? "border-[var(--primary)]"
+                      : "border-transparent hover:border-[var(--border)]",
+                  )}
+                >
+                  <img src={model.src} alt={model.name} className="aspect-[3/4] w-full object-cover" />
+                  <span
+                    className={cn(
+                      "block truncate px-1.5 py-1 text-xs font-semibold",
+                      selected
+                        ? "bg-[var(--primary)] text-white"
+                        : "bg-[var(--background)] text-[var(--foreground)]",
+                    )}
+                  >
+                    {model.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </>
       )}
