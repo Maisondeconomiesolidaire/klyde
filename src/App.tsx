@@ -434,6 +434,36 @@ function statusLabel(status: string) {
   );
 }
 
+/** Classe de la pastille de statut (repris du style boutique recyclerie). */
+function statusPillClass(status: string) {
+  const normalized = status === "en_stock" || status === "reserve" ? "stock" : status;
+  return (
+    {
+      stock: "bg-[var(--primary)] text-white",
+      en_ligne: "bg-sky-500 text-white",
+      en_cours_envoi: "bg-amber-500 text-white",
+      envoye: "bg-violet-500 text-white",
+      gagne: "bg-emerald-600 text-white",
+      vendu: "bg-emerald-600 text-white",
+      archive: "bg-[var(--muted)] text-[var(--muted-foreground)]",
+    }[normalized] ?? "bg-[var(--muted)] text-[var(--muted-foreground)]"
+  );
+}
+
+/** Pastille de statut ronde, style « boutique ». */
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        statusPillClass(status),
+      )}
+    >
+      {statusLabel(status)}
+    </span>
+  );
+}
+
 function revokeLocalPreview(url: string) {
   if (url.startsWith("blob:")) URL.revokeObjectURL(url);
 }
@@ -1246,7 +1276,7 @@ function AppContent() {
         setDraggedId(item._id);
         event.dataTransfer.setData("text/plain", item._id);
       }}
-      className="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--card)]"
+      className="cursor-pointer overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]"
     >
       <ArticleThumb item={item} />
       <div className="grid gap-2 p-3">
@@ -1264,7 +1294,7 @@ function AppContent() {
         </div>
         <div className="flex items-center justify-between pt-1 text-xs text-[var(--muted-foreground)]">
           <span>Stock x{item.quantity}</span>
-          <span>{statusLabel(item.status)}</span>
+          <StatusPill status={item.status} />
         </div>
         {actionButtons(item)}
       </div>
@@ -1272,37 +1302,43 @@ function AppContent() {
   );
 
   const articleRow = (item: ListedItem) => (
-    <article
+    <tr
       key={item._id}
       onClick={() => openDetail(item, "article")}
-      className="grid gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 sm:grid-cols-[72px_1fr_auto]"
+      className="cursor-pointer bg-[var(--background)] hover:bg-[var(--card)]"
     >
-      <img
-        src={item.photoUrls[0] ?? ""}
-        alt=""
-        className="aspect-square w-20 rounded-md bg-[var(--muted)] object-cover sm:w-[72px]"
-      />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-semibold">{item.title}</h2>
-          <span className="rounded-md bg-[var(--muted)] px-2 py-1 text-xs">
-            {statusLabel(item.status)}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--muted)]">
+            {item.photoUrls[0] ? (
+              <img src={item.photoUrls[0]} alt={item.title} className="h-full w-full object-cover" />
+            ) : (
+              <Package className="h-4 w-4 text-[var(--muted-foreground)]" />
+            )}
           </span>
+          <div className="min-w-0">
+            <p className="line-clamp-1 font-medium">{item.title}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {[item.brand, item.size, item.condition].filter(Boolean).join(" · ") || "—"}
+            </p>
+          </div>
         </div>
-        <div className="mt-1 text-sm text-[var(--muted-foreground)]">
-          {[item.brand, item.gender, item.size, item.category, item.subcategory, item.condition]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
-        <div className="mt-1 text-sm text-[var(--muted-foreground)]">
-          {item.sku ? `Réf. ${item.sku}` : "Sans référence"}
-        </div>
-      </div>
-      <div className="grid gap-2 sm:min-w-56 sm:justify-items-end">
-        <div className="font-semibold">{item.price != null ? `${item.price.toFixed(2)} €` : "-"}</div>
-        <div className="w-full sm:w-56">{actionButtons(item)}</div>
-      </div>
-    </article>
+      </td>
+      <td className="px-4 py-3 text-[var(--muted-foreground)]">{item.sku || "—"}</td>
+      <td className="px-4 py-3 text-[var(--muted-foreground)]">
+        {[item.category, item.subcategory].filter(Boolean).join(" · ") || "—"}
+      </td>
+      <td className="px-4 py-3 text-[var(--muted-foreground)]">{item.location || "—"}</td>
+      <td className="px-4 py-3 font-semibold">
+        {item.price != null ? `${item.price.toFixed(2)} €` : "—"}
+      </td>
+      <td className="px-4 py-3">
+        <StatusPill status={item.status} />
+      </td>
+      <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+        <div className="w-52">{actionButtons(item)}</div>
+      </td>
+    </tr>
   );
 
   const kanbanCard = (item: ListedItem) => (
@@ -1476,7 +1512,7 @@ function AppContent() {
 
         <main className="p-3 sm:p-4 md:p-6">
           <div className="mb-5 grid gap-3 lg:grid-cols-[minmax(280px,420px)_1fr] lg:items-start">
-            <div className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3">
+            <div className="flex w-full items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--input)] px-3.5">
               <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
               <input
                 className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -1487,7 +1523,7 @@ function AppContent() {
             </div>
 
             {activeTab === "stock" ? (
-              <div className="grid gap-2">
+              <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1.45fr_0.95fr]">
                   <select
                     value={categoryFilter}
@@ -1495,7 +1531,7 @@ function AppContent() {
                       setCategoryFilter(event.target.value);
                       setSubcategoryFilter("all");
                     }}
-                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                   >
                     <option value="all">Toutes catégories</option>
                     {categories.map((category) => (
@@ -1507,7 +1543,7 @@ function AppContent() {
                   <select
                     value={subcategoryFilter}
                     onChange={(event) => setSubcategoryFilter(event.target.value)}
-                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                   >
                     <option value="all">Toutes sous-catégories</option>
                     {availableSubcategories.map((subcategory) => (
@@ -1519,7 +1555,7 @@ function AppContent() {
                   <select
                     value={genderFilter}
                     onChange={(event) => setGenderFilter(event.target.value)}
-                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
                   >
                     <option value="all">Tous genres</option>
                     {genders.map((gender) => (
@@ -1533,7 +1569,7 @@ function AppContent() {
                   <select
                     value={sizeFilter}
                     onChange={(event) => setSizeFilter(event.target.value)}
-                    className="h-10 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-sm sm:w-64"
+                    className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm sm:w-64"
                   >
                     <option value="all">Toutes tailles</option>
                     {sizes.map((size) => (
@@ -1542,11 +1578,11 @@ function AppContent() {
                       </option>
                     ))}
                   </select>
-                  <div className="inline-flex rounded-md border border-[var(--border)] p-1">
+                  <div className="inline-flex rounded-xl border border-[var(--border)] p-1">
                     <button
                       type="button"
                       onClick={() => setStockMode("cards")}
-                      className={cn("rounded px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
+                      className={cn("rounded-lg px-3 py-2", stockMode === "cards" && "bg-[var(--muted)]")}
                       aria-label="Mode cards"
                     >
                       <LayoutGrid className="h-4 w-4" />
@@ -1554,7 +1590,7 @@ function AppContent() {
                     <button
                       type="button"
                       onClick={() => setStockMode("list")}
-                      className={cn("rounded px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
+                      className={cn("rounded-lg px-3 py-2", stockMode === "list" && "bg-[var(--muted)]")}
                       aria-label="Mode liste"
                     >
                       <List className="h-4 w-4" />
@@ -1589,7 +1625,7 @@ function AppContent() {
             </div>
           ) : activeTab === "stock" ? (
             visibleItems.length === 0 ? (
-              <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-8 text-sm text-[var(--muted-foreground)]">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-[var(--muted-foreground)]">
                 Aucun article.
               </div>
             ) : stockMode === "cards" ? (
@@ -1597,7 +1633,24 @@ function AppContent() {
                 {visibleItems.map((item) => articleCard(item))}
               </div>
             ) : (
-              <div className="grid gap-3">{visibleItems.map((item) => articleRow(item))}</div>
+              <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+                <table className="min-w-[820px] w-full text-sm">
+                  <thead className="bg-[var(--card)] text-[var(--muted-foreground)]">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">Article</th>
+                      <th className="px-4 py-3 text-left font-medium">Référence</th>
+                      <th className="px-4 py-3 text-left font-medium">Catégorie</th>
+                      <th className="px-4 py-3 text-left font-medium">Emplacement</th>
+                      <th className="px-4 py-3 text-left font-medium">Prix</th>
+                      <th className="px-4 py-3 text-left font-medium">Statut</th>
+                      <th className="px-4 py-3 text-left font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {visibleItems.map((item) => articleRow(item))}
+                  </tbody>
+                </table>
+              </div>
             )
           ) : trackingTab === "gagne" ? (
             wonItems.length === 0 ? (
