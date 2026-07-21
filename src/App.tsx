@@ -38,6 +38,26 @@ import { useUpload } from "./lib/useUpload";
 
 type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
 type AppTab = "stock" | "suivi";
+
+/**
+ * Mannequins pour l'essayage virtuel FASHN. Détectés automatiquement au build
+ * dans `src/assets/tryon-models/` : le nom du fichier devient le nom du modèle.
+ * Ajouter/retirer une image suffit — aucun code à modifier.
+ */
+type TryOnModel = { name: string; src: string };
+const TRYON_MODELS: TryOnModel[] = Object.entries(
+  import.meta.glob("./assets/tryon-models/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}", {
+    eager: true,
+    query: "?url",
+    import: "default",
+  }) as Record<string, string>,
+)
+  .map(([path, src]) => {
+    const file = path.split("/").pop() ?? path;
+    const name = file.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+    return { name: name || file, src };
+  })
+  .sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true }));
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
 type ShopRoute = string;
@@ -856,8 +876,9 @@ function AppContent() {
   const [extraDetails, setExtraDetails] = useState("");
   const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
-  // Essayage virtuel FASHN : mannequin homme/femme.
-  const [tryOnGender, setTryOnGender] = useState<"femme" | "homme">("femme");
+  // Essayage virtuel FASHN : mannequin choisi + génération du fond studio.
+  const [tryOnModelSrc, setTryOnModelSrc] = useState<string>(TRYON_MODELS[0]?.src ?? "");
+  const [tryOnBackground, setTryOnBackground] = useState(true);
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
@@ -1238,11 +1259,20 @@ function AppContent() {
       setError("Ajoute une photo de l'article avant de générer l'essayage.");
       return;
     }
+    if (!tryOnModelSrc) {
+      setError("Aucun mannequin disponible. Ajoute des modèles pour générer un essayage.");
+      return;
+    }
     setError(null);
     setBusy("tryon");
     try {
-      const garmentType = form.subcategory || form.category || undefined;
-      const result = await generateTryOn({ storageId, gender: tryOnGender, garmentType });
+      // URL absolue du mannequin pour que FASHN puisse la récupérer.
+      const modelImageUrl = new URL(tryOnModelSrc, window.location.origin).href;
+      const result = await generateTryOn({
+        storageId,
+        modelImageUrl,
+        generateBackground: tryOnBackground,
+      });
       if (!result.url) throw new Error("Image générée introuvable.");
       const generatedUrl = result.url;
       setForm((current) => ({
@@ -1351,34 +1381,62 @@ function AppContent() {
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
-  // Carte « Essayage virtuel » (FASHN) : choix du mannequin + génération.
+  // Carte « Essayage virtuel » (FASHN Try-On Max) : choix du mannequin,
+  // génération du fond studio, puis génération.
   const tryOnCard = (sourceIndex: number) => (
     <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
         <Shirt className="h-3.5 w-3.5" />
         Essayage porté
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {(["femme", "homme"] as const).map((gender) => (
-          <button
-            key={gender}
-            type="button"
-            onClick={() => setTryOnGender(gender)}
-            className={cn(
-              "h-9 rounded-full border text-sm font-semibold capitalize transition",
-              tryOnGender === gender
-                ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
-                : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--muted)]",
-            )}
-          >
-            {gender}
-          </button>
-        ))}
-      </div>
+
+      {TRYON_MODELS.length === 0 ? (
+        <p className="rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] p-3 text-[11px] leading-4 text-[var(--muted-foreground)]">
+          Aucun mannequin configuré. Ajoutez des images dans
+          <span className="font-medium"> src/assets/tryon-models/ </span>
+          pour pouvoir générer un essayage.
+        </p>
+      ) : (
+        <>
+          <span className="text-xs font-medium text-[var(--muted-foreground)]">Mannequin</span>
+          <div className="grid grid-cols-4 gap-2">
+            {TRYON_MODELS.map((model) => (
+              <button
+                key={model.src}
+                type="button"
+                onClick={() => setTryOnModelSrc(model.src)}
+                title={model.name}
+                className={cn(
+                  "overflow-hidden rounded-xl border-2 transition",
+                  tryOnModelSrc === model.src
+                    ? "border-[var(--primary)]"
+                    : "border-transparent hover:border-[var(--border)]",
+                )}
+              >
+                <img src={model.src} alt={model.name} className="aspect-[3/4] w-full object-cover" />
+                <span className="block truncate bg-[var(--background)] px-1 py-0.5 text-[10px] font-medium">
+                  {model.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <label className="flex items-center gap-2 text-xs font-medium">
+        <input
+          type="checkbox"
+          checked={tryOnBackground}
+          onChange={(event) => setTryOnBackground(event.target.checked)}
+          className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+        />
+        Générer un fond studio (photos sur fond vert)
+      </label>
+
       <button
         type="button"
         onClick={() => void runTryOn(sourceIndex)}
-        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze || TRYON_MODELS.length === 0}
         title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
         className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
       >
@@ -1386,7 +1444,7 @@ function AppContent() {
         Générer l’essayage porté
       </button>
       <p className="text-[11px] leading-4 text-[var(--muted-foreground)]">
-        Génère une photo de l’article porté par un mannequin {tryOnGender} sur fond studio, et l’ajoute aux photos.
+        Place l’article sur le mannequin choisi (Try-On Max) et ajoute l’image générée aux photos. Compter ~1 à 2 min.
       </p>
     </div>
   );
