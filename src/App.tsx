@@ -6,8 +6,10 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  Download,
   Heart,
   ImagePlus,
+  Shirt,
   Kanban,
   Loader2,
   Package,
@@ -854,6 +856,10 @@ function AppContent() {
   const [extraDetails, setExtraDetails] = useState("");
   const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
+  // Essayage virtuel FASHN : mannequin homme/femme.
+  const [tryOnGender, setTryOnGender] = useState<"femme" | "homme">("femme");
+  // Volet « Nouvel article » : publier directement sur la boutique.
+  const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
   const [dropTarget, setDropTarget] = useState<KlydeStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -861,6 +867,7 @@ function AppContent() {
 
   const upload = useUpload();
   const analyzePhotos = useAction(api.klyde.analyzePhotos);
+  const generateTryOn = useAction(api.klyde.generateTryOn);
   const createItem = useMutation(api.klyde.create);
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
@@ -945,6 +952,7 @@ function AppContent() {
     setEditingId(null);
     setForm(initialForm);
     setExtraDetails("");
+    setPublishOnCreate(false);
     resetCustomBackground();
     setError(null);
     setDrawerOpen(true);
@@ -1220,6 +1228,56 @@ function AppContent() {
     }
   }
 
+  /**
+   * Essayage virtuel FASHN : envoie la photo à plat sélectionnée et ajoute
+   * l'image générée (article porté par un mannequin) aux photos de l'article.
+   */
+  async function runTryOn(sourceIndex: number) {
+    const storageId = form.photos[sourceIndex];
+    if (!storageId) {
+      setError("Ajoute une photo de l'article avant de générer l'essayage.");
+      return;
+    }
+    setError(null);
+    setBusy("tryon");
+    try {
+      const garmentType = form.subcategory || form.category || undefined;
+      const result = await generateTryOn({ storageId, gender: tryOnGender, garmentType });
+      if (!result.url) throw new Error("Image générée introuvable.");
+      const generatedUrl = result.url;
+      setForm((current) => ({
+        ...current,
+        photos: [...current.photos, result.storageId],
+        previewUrls: [...current.previewUrls, generatedUrl],
+      }));
+      setActivePhotoIndex(form.photos.length);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Essayage virtuel impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Télécharge une image (photo d'article ou essayage généré). */
+  async function downloadImage(url: string, index: number) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error();
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+      link.download = `${form.sku || form.title || "klyd-article"}-${index + 1}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setError("Téléchargement de l'image impossible.");
+    }
+  }
+
   function buildItemPayload() {
     return {
       photos: form.photos,
@@ -1258,7 +1316,7 @@ function AppContent() {
       if (editingId) {
         await updateItem({ id: editingId, ...payload });
       } else {
-        await createItem(payload);
+        await createItem({ ...payload, publishOnline: publishOnCreate || undefined });
       }
       closeDrawer();
     } catch (err) {
@@ -1292,6 +1350,46 @@ function AppContent() {
   const formSubcategories = formCategoryKey ? categoryTree[formCategoryKey] : [];
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
+
+  // Carte « Essayage virtuel » (FASHN) : choix du mannequin + génération.
+  const tryOnCard = (sourceIndex: number) => (
+    <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+        <Shirt className="h-3.5 w-3.5" />
+        Essayage porté
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {(["femme", "homme"] as const).map((gender) => (
+          <button
+            key={gender}
+            type="button"
+            onClick={() => setTryOnGender(gender)}
+            className={cn(
+              "h-9 rounded-full border text-sm font-semibold capitalize transition",
+              tryOnGender === gender
+                ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
+                : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--muted)]",
+            )}
+          >
+            {gender}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => void runTryOn(sourceIndex)}
+        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+        title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {busy === "tryon" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shirt className="h-4 w-4" />}
+        Générer l’essayage porté
+      </button>
+      <p className="text-[11px] leading-4 text-[var(--muted-foreground)]">
+        Génère une photo de l’article porté par un mannequin {tryOnGender} sur fond studio, et l’ajoute aux photos.
+      </p>
+    </div>
+  );
 
   const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => (
     <button
@@ -1983,6 +2081,20 @@ function AppContent() {
                     <Package className="h-10 w-10" />
                   </div>
                 )}
+                {form.previewUrls.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idx = Math.min(activePhotoIndex, form.previewUrls.length - 1);
+                      void downloadImage(form.previewUrls[idx], idx);
+                    }}
+                    className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black/75"
+                    aria-label="Télécharger la photo"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Télécharger
+                  </button>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-5 gap-2">
@@ -2084,6 +2196,8 @@ function AppContent() {
                   </button>
                 </div>
               </div>
+
+              {tryOnCard(Math.min(activePhotoIndex, Math.max(form.previewUrls.length - 1, 0)))}
             </div>
 
             {/* Colonne détails : tous les champs directement modifiables. */}
@@ -2376,6 +2490,14 @@ function AppContent() {
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void downloadImage(url, index)}
+                        className="absolute left-1 top-1 rounded-md bg-black/70 p-1 text-white"
+                        aria-label="Télécharger la photo"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2456,6 +2578,8 @@ function AppContent() {
                   Analyser les photos
                 </button>
               </div>
+
+              {tryOnCard(0)}
 
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -2607,6 +2731,23 @@ function AppContent() {
                 Mis en vente sur Vinted
               </label>
 
+              {canPublish ? (
+                <label className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
+                  <span className="grid gap-0.5">
+                    <span className="text-sm font-semibold">Mettre en ligne</span>
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      Publie directement l’article sur la boutique (prix requis).
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={publishOnCreate}
+                    onChange={(event) => setPublishOnCreate(event.target.checked)}
+                    className="h-5 w-5 rounded border-[var(--border)] accent-[var(--primary)]"
+                  />
+                </label>
+              ) : null}
+
               <button
                 type="submit"
                 disabled={busy === "save" || busy === "upload"}
@@ -2616,7 +2757,9 @@ function AppContent() {
                   ? "Enregistrement..."
                   : editingId
                     ? "Enregistrer les modifications"
-                    : "Ajouter au stock"}
+                    : publishOnCreate
+                      ? "Ajouter et mettre en ligne"
+                      : "Ajouter au stock"}
               </button>
             </div>
           </form>
