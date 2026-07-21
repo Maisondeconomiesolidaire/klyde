@@ -880,6 +880,7 @@ function AppContent() {
   // Essayage virtuel FASHN : mannequin choisi + génération du fond studio.
   const [tryOnModelSrc, setTryOnModelSrc] = useState<string>(TRYON_MODELS[0]?.src ?? "");
   const [tryOnBackground, setTryOnBackground] = useState(true);
+  const [tryOnResolution, setTryOnResolution] = useState<"1k" | "2k" | "4k">("2k");
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
@@ -1273,6 +1274,7 @@ function AppContent() {
         storageId,
         modelImageUrl,
         generateBackground: tryOnBackground,
+        resolution: tryOnResolution,
       });
       if (!result.url) throw new Error("Image générée introuvable.");
       const generatedUrl = result.url;
@@ -1438,6 +1440,27 @@ function AppContent() {
           </div>
         </>
       )}
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-[var(--muted-foreground)]">Qualité</span>
+        <div className="inline-flex rounded-full border border-[var(--border)] p-0.5">
+          {(["1k", "2k", "4k"] as const).map((res) => (
+            <button
+              key={res}
+              type="button"
+              onClick={() => setTryOnResolution(res)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-semibold uppercase transition",
+                tryOnResolution === res
+                  ? "bg-[var(--primary)] text-white"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+              )}
+            >
+              {res}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <label className="flex items-center gap-2 text-xs font-medium">
         <input
