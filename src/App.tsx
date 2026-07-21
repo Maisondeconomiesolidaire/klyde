@@ -59,6 +59,7 @@ type FormState = {
   style: string;
   location: string;
   sku: string;
+  vinted: boolean;
   quantity: string;
   aiConfidence?: number;
   aiNotes: string;
@@ -96,6 +97,7 @@ const initialForm: FormState = {
   style: "",
   location: "",
   sku: "",
+  vinted: false,
   quantity: "1",
   aiNotes: "",
 };
@@ -457,6 +459,15 @@ function StatusPill({ status }: { status: string }) {
       )}
     >
       {statusLabel(status)}
+    </span>
+  );
+}
+
+/** Pastille « Vinted » : l'article est mis en vente sur Vinted. */
+function VintedBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+      Vinted
     </span>
   );
 }
@@ -952,6 +963,7 @@ function AppContent() {
       style: item.style ?? "",
       location: item.location ?? "",
       sku: item.sku ?? "",
+      vinted: item.vinted ?? false,
       quantity: String(item.quantity),
       aiConfidence: item.aiConfidence,
       aiNotes: item.aiNotes ?? "",
@@ -1203,6 +1215,7 @@ function AppContent() {
         style: form.style || undefined,
         location: form.location || undefined,
         sku: form.sku || undefined,
+        vinted: form.vinted,
         quantity: asNumber(form.quantity),
         aiConfidence: form.aiConfidence,
         aiNotes: form.aiNotes || undefined,
@@ -1331,9 +1344,12 @@ function AppContent() {
         <div className="text-xs text-[var(--muted-foreground)]">
           {[item.gender, item.category, item.subcategory, item.color].filter(Boolean).join(" · ")}
         </div>
-        <div className="flex items-center justify-between pt-1 text-xs text-[var(--muted-foreground)]">
+        <div className="flex items-center justify-between gap-2 pt-1 text-xs text-[var(--muted-foreground)]">
           <span>Stock x{item.quantity}</span>
-          <StatusPill status={item.status} />
+          <div className="flex items-center gap-1.5">
+            {item.vinted ? <VintedBadge /> : null}
+            <StatusPill status={item.status} />
+          </div>
         </div>
         {actionButtons(item)}
       </div>
@@ -1372,7 +1388,10 @@ function AppContent() {
         {item.price != null ? `${item.price.toFixed(2)} €` : "—"}
       </td>
       <td className="px-4 py-3">
-        <StatusPill status={item.status} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusPill status={item.status} />
+          {item.vinted ? <VintedBadge /> : null}
+        </div>
       </td>
       <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
         <div className="w-52">{actionButtons(item)}</div>
@@ -1778,6 +1797,7 @@ function AppContent() {
                     ["Couleur", detailItem.color ?? "-"],
                     ["Matière", detailItem.material ?? "-"],
                     ["Référence", detailItem.sku ?? "-"],
+                    ["Vinted", detailItem.vinted ? "Oui" : "Non"],
                     ["Quantité", String(detailItem.quantity)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md border border-[var(--border)] p-3">
@@ -2130,7 +2150,12 @@ function AppContent() {
                   <input className={inputClass()} value={form.location} onChange={(event) => update("location", event.target.value)} />
                 </Field>
                 <Field label="Référence">
-                  <input className={inputClass()} value={form.sku} onChange={(event) => update("sku", event.target.value)} />
+                  <input
+                    className={inputClass()}
+                    value={form.sku}
+                    onChange={(event) => update("sku", event.target.value)}
+                    placeholder={editingId ? undefined : "Générée automatiquement si vide"}
+                  />
                 </Field>
                 <Field label="Quantité">
                   <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
@@ -2139,6 +2164,16 @@ function AppContent() {
                   <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
                 </Field>
               </div>
+
+              <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={form.vinted}
+                  onChange={(event) => update("vinted", event.target.checked)}
+                  className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+                />
+                Mis en vente sur Vinted
+              </label>
 
               <button
                 type="submit"
