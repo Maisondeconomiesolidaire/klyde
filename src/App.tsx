@@ -877,9 +877,8 @@ function AppContent() {
   const [extraDetails, setExtraDetails] = useState("");
   const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
-  // Essayage virtuel FASHN : mannequin choisi + génération du fond studio.
+  // Essayage virtuel FASHN : mannequin choisi + qualité de sortie.
   const [tryOnModelSrc, setTryOnModelSrc] = useState<string>(TRYON_MODELS[0]?.src ?? "");
-  const [tryOnBackground, setTryOnBackground] = useState(true);
   const [tryOnResolution, setTryOnResolution] = useState<"1k" | "2k" | "4k">("2k");
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
@@ -1273,7 +1272,6 @@ function AppContent() {
       const result = await generateTryOn({
         storageId,
         modelImageUrl,
-        generateBackground: tryOnBackground,
         resolution: tryOnResolution,
       });
       if (!result.url) throw new Error("Image générée introuvable.");
@@ -1385,7 +1383,7 @@ function AppContent() {
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
   // Carte « Essayage virtuel » (FASHN Try-On Max) : choix du mannequin,
-  // génération du fond studio, puis génération.
+  // qualité, puis génération.
   const tryOnCard = (sourceIndex: number) => (
     <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
@@ -1461,16 +1459,6 @@ function AppContent() {
           ))}
         </div>
       </div>
-
-      <label className="flex items-center gap-2 text-xs font-medium">
-        <input
-          type="checkbox"
-          checked={tryOnBackground}
-          onChange={(event) => setTryOnBackground(event.target.checked)}
-          className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
-        />
-        Générer un fond studio (photos sur fond vert)
-      </label>
 
       <button
         type="button"
