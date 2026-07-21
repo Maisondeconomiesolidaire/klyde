@@ -1065,6 +1065,21 @@ function AppContent() {
     }));
   }
 
+  /** Définit la photo `index` comme couverture (première photo de l'article). */
+  function setCoverPhoto(index: number) {
+    setForm((current) => {
+      if (index <= 0 || index >= current.photos.length) return current;
+      const photos = current.photos.slice();
+      const previewUrls = current.previewUrls.slice();
+      const [photo] = photos.splice(index, 1);
+      const [url] = previewUrls.splice(index, 1);
+      photos.unshift(photo);
+      previewUrls.unshift(url);
+      return { ...current, photos, previewUrls };
+    });
+    setActivePhotoIndex(0);
+  }
+
   function replacePhotoAt(index: number, newId: Id<"_storage">, newUrl: string) {
     setForm((current) => {
       if (index < 0 || index >= current.photos.length) return current;
@@ -2198,6 +2213,22 @@ function AppContent() {
                     >
                       <img src={url} alt="" className="aspect-square w-full object-cover" />
                     </button>
+                    {index === 0 ? (
+                      <span className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center justify-center gap-1 rounded-md bg-[var(--primary)] py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                        <Star className="h-2.5 w-2.5 fill-current" />
+                        Couverture
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setCoverPhoto(index)}
+                        className="absolute left-1 top-1 rounded-full bg-black/70 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                        aria-label="Définir comme couverture"
+                        title="Définir comme couverture"
+                      >
+                        <Star className="h-3 w-3" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -2583,6 +2614,22 @@ function AppContent() {
                       >
                         <Download className="h-3.5 w-3.5" />
                       </button>
+                      {index === 0 ? (
+                        <span className="pointer-events-none absolute left-1 bottom-1 inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                          <Star className="h-2.5 w-2.5 fill-current" />
+                          Couverture
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setCoverPhoto(index)}
+                          className="absolute left-1 bottom-1 rounded-md bg-black/70 p-1 text-white"
+                          aria-label="Définir comme couverture"
+                          title="Définir comme couverture"
+                        >
+                          <Star className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
