@@ -87,3 +87,12 @@ textarea {
 .shop-photo-fade {
   animation: shop-photo-fade 280ms ease-out both;
 }
+
+.klyde-gallery-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.klyde-gallery-scroll::-webkit-scrollbar {
+  display: none;
+}

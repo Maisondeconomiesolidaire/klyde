@@ -281,6 +281,11 @@ const shopMenus = [
   },
 ] as const;
 
+const SHOP_EDITORIAL_COVERS = {
+  homme: "https://images.unsplash.com/photo-1617127365659-c47fa864d8bc?auto=format&fit=crop&w=1800&q=85",
+  femme: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1800&q=85",
+} as const;
+
 const processColumns: Array<{ status: KlydeStatus; label: string }> = [
   { status: "en_ligne", label: "En ligne" },
   { status: "en_cours_envoi", label: "En cours d’envoi" },
@@ -3182,52 +3187,32 @@ function BoutiqueCatalog({
     gender: gender || undefined,
     size: size || undefined,
   });
-  const heroItem = useQuery(api.klyde.getFeatured, {});
 
   return (
     <main>
-      <section className="relative h-[calc(100svh-8.5rem)] min-h-[34rem] overflow-hidden bg-[#171717] text-white sm:h-[calc(100svh-9.5rem)]">
-        {heroItem?.photoUrls[0] ? (
+      <section className="grid h-[calc(100svh-8.5rem)] min-h-[36rem] overflow-hidden bg-black text-white md:grid-cols-2 sm:h-[calc(100svh-9.5rem)]">
+        {([
+          { label: "Nouveautés homme", gender: "Homme", image: SHOP_EDITORIAL_COVERS.homme, position: "object-[center_28%]" },
+          { label: "Nouveautés femme", gender: "Femme", image: SHOP_EDITORIAL_COVERS.femme, position: "object-[center_35%]" },
+        ] as const).map((cover) => (
           <button
+            key={cover.gender}
             type="button"
-            onClick={() => goTo(`/boutique/article/${heroItem._id}`)}
-            className="group absolute inset-0 block h-full w-full text-left"
+            onClick={() => goTo(shopCategoryPath("Vêtements", undefined, cover.gender))}
+            className="group relative min-h-0 overflow-hidden text-left"
           >
             <img
-              src={heroItem.photoUrls[0]}
-              alt={heroItem.title}
-              className="h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.015]"
+              src={cover.image}
+              alt={cover.label}
+              className={cn("h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]", cover.position)}
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/5 to-transparent" />
+            <div className="absolute bottom-0 left-0 p-7 sm:p-10">
+              <p className="text-2xl font-normal uppercase tracking-[0.035em] sm:text-3xl">{cover.label}</p>
+              <span className="mt-8 inline-block border-b border-white/75 pb-1 text-sm text-white/95">Découvrir la sélection</span>
+            </div>
           </button>
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-white/30">
-            <ShoppingBag className="h-24 w-24" />
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
-        <div className="absolute left-5 top-5 rounded-full bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1f1b18] sm:left-8 sm:top-8">
-          Article phare
-        </div>
-        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8 lg:p-12">
-          <div className="max-w-md">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/75">
-              {heroItem?.brand || "Sélection Klyde"}
-            </p>
-            <h1 className="mt-3 text-3xl font-medium tracking-tight sm:text-5xl">
-              {heroItem?.title ?? "La prochaine pièce Klyde arrive bientôt"}
-            </h1>
-            {heroItem?.description ? (
-              <p className="mt-4 line-clamp-3 text-sm leading-6 text-white/85 sm:text-base sm:leading-7">
-                {heroItem.description}
-              </p>
-            ) : (
-              <p className="mt-4 text-sm leading-6 text-white/85 sm:text-base">
-                Une pièce sélectionnée, prête à rejoindre votre vestiaire.
-              </p>
-            )}
-            {heroItem ? <p className="mt-5 text-lg font-medium sm:text-xl">{formatPrice(heroItem.price)}</p> : null}
-          </div>
-        </div>
+        ))}
       </section>
       <section id="catalogue" className="bg-white">
         <div className="flex items-center justify-between border-b border-[#1f1b18]/10 px-5 py-3 sm:px-8">
@@ -3677,6 +3662,7 @@ function ProductDetailPage({
   const itemId = parseShopArticleId(route);
   const item = useQuery(api.klyde.getPublic, { id: itemId as Id<"klydeItems"> });
   const [selectedPhoto, setSelectedPhoto] = useState(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedPhoto(0);
@@ -3710,7 +3696,6 @@ function ProductDetailPage({
 
   const saved = wishlist.idSet.has(item._id);
   const inCart = cart.has(item._id);
-  const photo = item.photoUrls[selectedPhoto] ?? item.photoUrls[0] ?? "";
   const detailRows = [
     ["Catégorie", item.category],
     ["Sous-catégorie", item.subcategory],
@@ -3720,135 +3705,70 @@ function ProductDetailPage({
     ["Référence", item.sku],
   ].filter((row): row is [string, string] => Boolean(row[1]));
 
+  function selectPhoto(index: number) {
+    setSelectedPhoto(index);
+    galleryRef.current?.children[index]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
-    <main className="mx-auto max-w-[96rem] px-4 py-7 sm:px-6 lg:px-8">
-      <div className="mb-6 text-sm italic text-[#1f1b18]/55">
-        <button type="button" onClick={() => goTo("/boutique")} className="hover:text-[var(--primary)]">
-          Accueil
-        </button>
-        <span className="mx-2">›</span>
-        <button
-          type="button"
-          onClick={() => goTo(shopCategoryPath(item.category, item.subcategory, item.gender))}
-          className="hover:text-[var(--primary)]"
-        >
-          {item.category}
-        </button>
-        {item.subcategory ? (
-          <>
-            <span className="mx-2">›</span>
-            <span>{item.subcategory}</span>
-          </>
-        ) : null}
-      </div>
-
-      <section className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_430px]">
-        <div className="grid gap-3 lg:grid-cols-[92px_minmax(0,1fr)] lg:items-start">
-          <div className="hidden grid-cols-1 content-start gap-3 lg:grid">
-            {item.photoUrls.map((url, index) => (
-              <button
-                key={url}
-                type="button"
-                onClick={() => setSelectedPhoto(index)}
-                className={cn(
-                  "aspect-[3/4] overflow-hidden bg-white",
-                  selectedPhoto === index && "ring-2 ring-[#010102]",
-                )}
-              >
-                <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
-
-          <div className="relative min-h-[520px] bg-white">
-            {photo ? (
-              <img src={photo} alt={item.title} className="h-full max-h-[820px] w-full object-contain" />
-            ) : (
-              <div className="flex h-full min-h-[520px] items-center justify-center text-[#1f1b18]/25">
-                <Package className="h-16 w-16" />
+    <main className="bg-white text-[#1f1b18]">
+      <section className="grid lg:min-h-[calc(100svh-9.5rem)] lg:grid-cols-[minmax(17rem,.8fr)_minmax(28rem,1.25fr)_minmax(17rem,.8fr)]">
+        <aside className="order-2 border-b border-[#1f1b18]/12 p-6 sm:p-10 lg:order-1 lg:border-b-0 lg:border-r lg:p-8 xl:p-12">
+          <div className="lg:sticky lg:top-32">
+            <div className="mb-10 text-xs text-[#1f1b18]/50">
+              <button type="button" onClick={() => goTo("/boutique")} className="hover:text-[#1f1b18]">Accueil</button>
+              <span className="mx-2">/</span>
+              <button type="button" onClick={() => goTo(shopCategoryPath(item.category, item.subcategory, item.gender))} className="hover:text-[#1f1b18]">{item.category}</button>
+            </div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#1f1b18]/55">{item.subcategory || item.category}</p>
+            <h1 className="mt-5 text-2xl font-medium uppercase leading-tight tracking-[0.02em] sm:text-3xl">{item.title}</h1>
+            <p className="mt-6 text-3xl font-medium tracking-tight sm:text-4xl">{formatPrice(item.price)}</p>
+            {item.color ? <p className="mt-10 text-sm"><span className="font-semibold">Couleur :</span> {item.color}</p> : null}
+            <div className="mt-10 grid overflow-hidden border border-[#1f1b18] sm:grid-cols-[1fr_7.5rem]">
+              <div>
+                <button type="button" className="flex h-16 w-full items-center justify-between border-b border-[#1f1b18] px-5 text-sm"><span><b>Taille :</b> {item.size || "Unique"}</span><span>›</span></button>
+                <button type="button" className="flex h-16 w-full items-center justify-between px-5 text-sm"><b>Guide des tailles</b><span>›</span></button>
               </div>
+              <button type="button" onClick={() => (inCart ? goTo("/boutique/panier") : cart.add(item._id))} className="flex min-h-24 items-center justify-center bg-[#010102] px-4 text-center text-sm font-medium text-white">
+                {inCart ? "Voir le panier" : "Ajouter"}
+              </button>
+            </div>
+            <p className="mt-8 text-sm leading-6 text-[#1f1b18]/65">Expédition soignée sous 48 h. Article contrôlé avant publication.</p>
+          </div>
+        </aside>
+
+        <div className="order-1 border-b border-[#1f1b18]/12 bg-[#fafafa] lg:order-2 lg:border-b-0 lg:border-r">
+          <div ref={galleryRef} className="klyde-gallery-scroll flex h-[72svh] snap-y snap-mandatory flex-col overflow-y-auto lg:sticky lg:top-[9.5rem] lg:h-[calc(100svh-9.5rem)]">
+            {item.photoUrls.length > 0 ? item.photoUrls.map((url, index) => (
+              <div key={url} className="flex h-full min-h-full shrink-0 snap-start items-center justify-center p-6 sm:p-10">
+                <img src={url} alt={`${item.title} — vue ${index + 1}`} loading={index === 0 ? "eager" : "lazy"} decoding="async" className="h-full w-full object-contain" />
+              </div>
+            )) : (
+              <div className="flex h-full min-h-full items-center justify-center text-[#1f1b18]/25"><Package className="h-16 w-16" /></div>
             )}
           </div>
         </div>
 
-        <aside className="lg:pl-8">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-[#1f1b18]/50">
-                {item.subcategory || item.category}
-              </p>
-              <h1 className="mt-3 text-xl font-medium uppercase leading-7 tracking-[0.06em] text-[#1f1b18]/76">
-                {item.title}
-              </h1>
-            </div>
-            <button
-              type="button"
-              onClick={() => void wishlist.toggle(item._id)}
-              className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white shadow-[0_16px_40px_rgba(0,0,0,0.08)]"
-              aria-label="Sauvegarder l’article"
-            >
-              <Heart className={cn("h-6 w-6", saved && "fill-[var(--primary)] text-[var(--primary)]")} />
-            </button>
-          </div>
-
-          <div className="mt-7 flex items-center gap-4">
-            <span className="text-2xl font-semibold text-[var(--primary)]">
-              {formatPrice(item.price)}
-            </span>
-          </div>
-
-          <p className="mt-7 text-sm leading-7 text-[#1f1b18]/64">{item.description}</p>
-
-          <div className="mt-7">
-            <div className="flex items-center justify-between text-sm text-[#1f1b18]/58">
-              <span>Taille : {item.size || "Unique"}</span>
-              <span className="underline underline-offset-4">Guide des tailles</span>
-            </div>
-            <div className="mt-3 grid grid-cols-5 gap-2">
-              {(item.size ? [item.size] : ["Unique"]).map((sizeValue) => (
-                <button
-                  type="button"
-                  key={sizeValue}
-                  className="h-12 border border-[#1f1b18]/15 bg-[#f6eee5] text-sm"
-                >
-                  {sizeValue}
+        <aside className="order-3 p-6 sm:p-10 lg:p-8 xl:p-12">
+          <div className="lg:sticky lg:top-32">
+            <div className="flex gap-2 overflow-x-auto pb-5">
+              {item.photoUrls.map((url, index) => (
+                <button key={url} type="button" onClick={() => selectPhoto(index)} className={cn("h-20 w-16 shrink-0 overflow-hidden border bg-[#fafafa]", selectedPhoto === index ? "border-[#1f1b18]" : "border-transparent")}>
+                  <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>
+            <div className="divide-y divide-[#1f1b18]/12 border-y border-[#1f1b18]/12">
+              <details open><summary className="flex cursor-pointer list-none items-center justify-between py-5 text-sm font-medium">Informations et détails <span>›</span></summary><p className="pb-5 text-sm leading-6 text-[#1f1b18]/65">{item.description || "Pièce sélectionnée avec soin par Klyde."}</p></details>
+              <details><summary className="flex cursor-pointer list-none items-center justify-between py-5 text-sm font-medium">Entretien du produit <span>›</span></summary><p className="pb-5 text-sm leading-6 text-[#1f1b18]/65">Consultez l’étiquette de l’article pour les instructions d’entretien.</p></details>
+            </div>
+            <div className="mt-6 flex items-center gap-5">
+              <button type="button" onClick={() => void wishlist.toggle(item._id)} className="inline-flex h-10 w-10 items-center justify-center" aria-label="Sauvegarder l’article"><Heart className={cn("h-6 w-6", saved && "fill-[#1f1b18]")} /></button>
+            </div>
+            <dl className="mt-10 grid gap-3 text-sm">
+              {detailRows.map(([label, value]) => <div key={label} className="flex justify-between gap-4"><dt className="text-[#1f1b18]/50">{label}</dt><dd className="text-right font-medium">{value}</dd></div>)}
+            </dl>
           </div>
-
-          <button
-            type="button"
-            onClick={() => (inCart ? goTo("/boutique/panier") : cart.add(item._id))}
-            className="mt-6 h-14 w-full bg-[#8f4a43] text-sm font-semibold uppercase tracking-[0.16em] text-white"
-          >
-            {inCart ? "Voir le panier" : "Ajouter au panier"}
-          </button>
-          <button
-            type="button"
-            disabled
-            className="mt-3 h-14 w-full bg-[#010102] text-sm font-semibold uppercase tracking-[0.16em] text-white/45"
-          >
-            Paiement par carte
-          </button>
-
-          <div className="mt-6 bg-[#e9aaa0] p-5 text-sm">
-            <p className="font-semibold uppercase tracking-[0.12em]">Service Klyd</p>
-            <ul className="mt-4 grid gap-3 text-[#1f1b18]/76">
-              <li>✓ Article contrôlé avant publication</li>
-              <li>✓ Panier sauvegardé sans compte</li>
-              <li>✓ Validation sécurisée après connexion</li>
-            </ul>
-          </div>
-
-          <dl className="mt-6 grid gap-3 border-t border-[#1f1b18]/10 pt-5 text-sm">
-            {detailRows.map(([label, value]) => (
-              <div key={label} className="flex justify-between gap-4">
-                <dt className="text-[#1f1b18]/50">{label}</dt>
-                <dd className="text-right font-medium">{value}</dd>
-              </div>
-            ))}
-          </dl>
         </aside>
       </section>
     </main>
