@@ -6,6 +6,8 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Heart,
   ImagePlus,
@@ -3325,9 +3327,25 @@ function ShopProductCard({
 }) {
   const inCart = cart.has(item._id);
   const saved = wishlist.idSet.has(item._id);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const hasMultiplePhotos = item.photoUrls.length > 1;
+  const currentPhoto = item.photoUrls[photoIndex] ?? item.photoUrls[0];
+
+  function previousPhoto() {
+    setPhotoIndex((index) => (index - 1 + item.photoUrls.length) % item.photoUrls.length);
+  }
+
+  function nextPhoto() {
+    setPhotoIndex((index) => (index + 1) % item.photoUrls.length);
+  }
+
   return (
     <article className="group">
-      <div className="relative aspect-[3/4] overflow-hidden bg-white">
+      <div
+        className="relative aspect-[3/4] overflow-hidden bg-[#f6eee5]"
+        onMouseEnter={() => hasMultiplePhotos && setPhotoIndex(1)}
+        onMouseLeave={() => setPhotoIndex(0)}
+      >
         <button
           type="button"
           onClick={() => void wishlist.toggle(item._id)}
@@ -3339,11 +3357,12 @@ function ShopProductCard({
         {item.photoUrls[0] ? (
           <button type="button" onClick={() => goTo(`/boutique/article/${item._id}`)} className="block h-full w-full">
             <img
-              src={item.photoUrls[0]}
+              key={currentPhoto}
+              src={currentPhoto}
               alt={item.title}
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"
+              className="shop-photo-fade h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]"
             />
           </button>
         ) : (
@@ -3354,6 +3373,31 @@ function ShopProductCard({
         <div className="absolute left-3 top-3 bg-[#f6eee5]/92 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
           {item.category}
         </div>
+        {hasMultiplePhotos ? (
+          <>
+            <button
+              type="button"
+              onClick={previousPhoto}
+              className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[#1f1b18] opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100 focus:opacity-100"
+              aria-label="Photo précédente"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={nextPhoto}
+              className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[#1f1b18] opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100 focus:opacity-100"
+              aria-label="Photo suivante"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
+              {item.photoUrls.slice(0, 5).map((_, index) => (
+                <span key={index} className={cn("h-1.5 rounded-full transition-all", index === photoIndex ? "w-4 bg-white" : "w-1.5 bg-white/70")} />
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
       <div className="pt-4">
         <div className="flex items-start justify-between gap-4">
