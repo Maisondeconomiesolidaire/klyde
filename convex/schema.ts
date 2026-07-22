@@ -1454,6 +1454,8 @@ export default defineSchema(
     sku: v.optional(v.string()),
     // Article mis en vente sur Vinted (case cochée dans le stock Klyd).
     vinted: v.optional(v.boolean()),
+    // Enseigne à laquelle l'article est rattaché : Klyd ou Mobifrip.
+    outlet: v.optional(v.union(v.literal("klyd"), v.literal("mobifrip"))),
     quantity: v.number(),
     status: v.union(
       v.literal("stock"),
@@ -1568,6 +1570,9 @@ export default defineSchema(
     companyId: v.id("bpCompanies"),
     senderRole: v.union(v.literal("client"), v.literal("staff")),
     senderName: v.string(),
+    // Compte Clerk de l'expéditeur : sert à afficher sa photo de profil (résolue
+    // à la lecture via `users.imageUrl`, toujours à jour).
+    senderClerkId: v.optional(v.string()),
     body: v.string(),
     readByClientAt: v.optional(v.number()),
     readByStaffAt: v.optional(v.number()),

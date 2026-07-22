@@ -12,6 +12,7 @@ import {
   Shirt,
   Kanban,
   Loader2,
+  Moon,
   Package,
   Scissors,
   Search,
@@ -20,6 +21,7 @@ import {
   ShoppingCart,
   Sparkles,
   Star,
+  Sun,
   Trash2,
   Trophy,
   User,
@@ -38,6 +40,12 @@ import { useUpload } from "./lib/useUpload";
 
 type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
 type AppTab = "stock" | "suivi";
+
+/**
+ * Fonctionnalités IA (analyse photos, détourage, essayage FASHN) masquées pour
+ * l'instant. Passer à `true` pour les réactiver — le code reste en place.
+ */
+const AI_ENABLED = false;
 
 /**
  * Mannequins pour l'essayage FASHN. Détectés automatiquement au build dans
@@ -82,10 +90,17 @@ type FormState = {
   location: string;
   sku: string;
   vinted: boolean;
+  outlet: "klyd" | "mobifrip";
   quantity: string;
   aiConfidence?: number;
   aiNotes: string;
 };
+
+/** Enseignes disponibles pour un article Klyd. */
+const OUTLETS = [
+  { value: "klyd", label: "Klyd" },
+  { value: "mobifrip", label: "Mobifrip" },
+] as const;
 
 type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
 type ShopItem = ListedItem;
@@ -120,6 +135,7 @@ const initialForm: FormState = {
   location: "",
   sku: "",
   vinted: false,
+  outlet: "klyd",
   quantity: "1",
   aiNotes: "",
 };
@@ -494,6 +510,41 @@ function VintedBadge() {
   );
 }
 
+/** Pastille d'enseigne : Klyd ou Mobifrip. */
+function OutletBadge({ outlet }: { outlet?: "klyd" | "mobifrip" | null }) {
+  const value = outlet ?? "klyd";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+        value === "mobifrip"
+          ? "bg-indigo-500/15 text-indigo-600"
+          : "bg-[var(--primary)]/12 text-[var(--primary)]",
+      )}
+    >
+      {value === "mobifrip" ? "Mobifrip" : "Klyd"}
+    </span>
+  );
+}
+
+/**
+ * Marqueur Vinted pour la liste : logo Vinted sur fond vert si l'article est en
+ * vente sur Vinted, sur fond gris sinon.
+ */
+function VintedFlag({ on }: { on: boolean }) {
+  return (
+    <span
+      title={on ? "En vente sur Vinted" : "Pas encore sur Vinted"}
+      className={cn(
+        "inline-flex items-center justify-center rounded-md px-2 py-1",
+        on ? "bg-emerald-500" : "bg-zinc-400/80",
+      )}
+    >
+      <img src="/vinted.svg" alt="Vinted" className="h-3 w-auto" />
+    </span>
+  );
+}
+
 /** Chips multi-sélection (repris du filtre catégories de la boutique recyclerie). */
 function MultiSelectChips({
   options,
@@ -857,8 +908,28 @@ function ArticleThumb({ item }: { item: ListedItem }) {
   );
 }
 
+/** Thème clair/sombre persistant (comme les autres apps de l'écosystème). */
+function useKlydeTheme() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const stored = localStorage.getItem("klyd-theme");
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const toggle = () =>
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      localStorage.setItem("klyd-theme", next);
+      return next;
+    });
+  return { theme, toggle };
+}
+
 function AppContent() {
   const { user } = useUser();
+  const { theme, toggle: toggleTheme } = useKlydeTheme();
   const [activeTab, setActiveTab] = useState<AppTab>("stock");
   const [trackingTab, setTrackingTab] = useState<TrackingTab>("process");
   const [form, setForm] = useState<FormState>(initialForm);
@@ -874,6 +945,12 @@ function AppContent() {
   const [searchText, setSearchText] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<"" | KlydeStatus>("");
+  const [selectedGender, setSelectedGender] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
+  const [selectedCondition, setSelectedCondition] = useState("");
+  const [selectedOutlet, setSelectedOutlet] = useState<"" | "klyd" | "mobifrip">("");
+  const [selectedVinted, setSelectedVinted] = useState<"" | "yes" | "no">("");
   const [extraDetails, setExtraDetails] = useState("");
   const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
@@ -930,9 +1007,26 @@ function AppContent() {
           return false;
         }
         if (selectedLocation && (item.location ?? "") !== selectedLocation) return false;
+        if (selectedStatus && item.status !== selectedStatus) return false;
+        if (selectedGender && (item.gender ?? "") !== selectedGender) return false;
+        if (selectedSize && (item.size ?? "") !== selectedSize) return false;
+        if (selectedCondition && item.condition !== selectedCondition) return false;
+        if (selectedOutlet && (item.outlet ?? "klyd") !== selectedOutlet) return false;
+        if (selectedVinted === "yes" && !item.vinted) return false;
+        if (selectedVinted === "no" && item.vinted) return false;
         return true;
       }),
-    [allItems, selectedCategories, selectedLocation],
+    [
+      allItems,
+      selectedCategories,
+      selectedLocation,
+      selectedStatus,
+      selectedGender,
+      selectedSize,
+      selectedCondition,
+      selectedOutlet,
+      selectedVinted,
+    ],
   );
   const locationOptions = useMemo(
     () =>
@@ -1000,6 +1094,7 @@ function AppContent() {
       location: item.location ?? "",
       sku: item.sku ?? "",
       vinted: item.vinted ?? false,
+      outlet: item.outlet ?? "klyd",
       quantity: String(item.quantity),
       aiConfidence: item.aiConfidence,
       aiNotes: item.aiNotes ?? "",
@@ -1352,6 +1447,7 @@ function AppContent() {
       location: form.location || undefined,
       sku: form.sku || undefined,
       vinted: form.vinted,
+      outlet: form.outlet,
       quantity: asNumber(form.quantity),
       aiConfidence: form.aiConfidence,
       aiNotes: form.aiNotes || undefined,
@@ -1600,6 +1696,7 @@ function AppContent() {
             {item.price != null ? `${item.price.toFixed(2)} €` : "-"}
           </span>
         </div>
+        <OutletBadge outlet={item.outlet} />
         <div className="text-xs text-[var(--muted-foreground)]">
           {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
         </div>
@@ -1609,7 +1706,7 @@ function AppContent() {
         <div className="flex items-center justify-between gap-2 pt-1 text-xs text-[var(--muted-foreground)]">
           <span>Stock x{item.quantity}</span>
           <div className="flex items-center gap-1.5">
-            {item.vinted ? <VintedBadge /> : null}
+            <VintedFlag on={Boolean(item.vinted)} />
             <StatusPill status={item.status} />
           </div>
         </div>
@@ -1634,7 +1731,10 @@ function AppContent() {
             )}
           </span>
           <div className="min-w-0">
-            <p className="line-clamp-1 font-medium">{item.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="line-clamp-1 font-medium">{item.title}</p>
+              <OutletBadge outlet={item.outlet} />
+            </div>
             <p className="text-xs text-[var(--muted-foreground)]">
               {[item.brand, item.size, item.condition].filter(Boolean).join(" · ") || "—"}
             </p>
@@ -1652,7 +1752,7 @@ function AppContent() {
       <td className="px-4 py-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusPill status={item.status} />
-          {item.vinted ? <VintedBadge /> : null}
+          <VintedFlag on={Boolean(item.vinted)} />
         </div>
       </td>
       <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
@@ -1759,6 +1859,14 @@ function AppContent() {
         <div className="space-y-3 border-t border-[var(--border)] p-4">
           <button
             type="button"
+            onClick={toggleTheme}
+            className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {theme === "dark" ? "Mode clair" : "Mode sombre"}
+          </button>
+          <button
+            type="button"
             onClick={() => goTo("/boutique")}
             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white"
           >
@@ -1807,6 +1915,14 @@ function AppContent() {
             <div className="md:hidden">
               <AppSwitcher current="klyde" />
             </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="rounded-md border border-[var(--border)] p-2 md:hidden"
+              aria-label={theme === "dark" ? "Mode clair" : "Mode sombre"}
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             <button type="button" onClick={() => goTo("/profil")} className="rounded-full md:hidden">
               <KlydeUserAvatar />
             </button>
@@ -1852,22 +1968,85 @@ function AppContent() {
                   onChange={setSelectedCategories}
                 />
               </div>
-              <div>
-                <p className="mb-2 text-sm font-medium text-[var(--muted-foreground)]">
-                  Filtrer par emplacement
-                </p>
-                <select
-                  value={selectedLocation}
-                  onChange={(event) => setSelectedLocation(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm outline-none focus:border-[var(--primary)]"
-                >
-                  <option value="">Tous les emplacements</option>
-                  {locationOptions.map((location) => (
-                    <option key={location} value={location}>
-                      {location}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {(() => {
+                  const selectClass =
+                    "h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm outline-none focus:border-[var(--primary)]";
+                  const filterStatuses: KlydeStatus[] = [
+                    "stock",
+                    "en_ligne",
+                    "en_cours_envoi",
+                    "envoye",
+                    "gagne",
+                    "archive",
+                  ];
+                  return (
+                    <>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Emplacement</span>
+                        <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className={selectClass}>
+                          <option value="">Tous</option>
+                          {locationOptions.map((location) => (
+                            <option key={location} value={location}>{location}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Statut</span>
+                        <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value as "" | KlydeStatus)} className={selectClass}>
+                          <option value="">Tous</option>
+                          {filterStatuses.map((status) => (
+                            <option key={status} value={status}>{statusLabel(status)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Enseigne</span>
+                        <select value={selectedOutlet} onChange={(e) => setSelectedOutlet(e.target.value as "" | "klyd" | "mobifrip")} className={selectClass}>
+                          <option value="">Toutes</option>
+                          {OUTLETS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Genre</span>
+                        <select value={selectedGender} onChange={(e) => setSelectedGender(e.target.value)} className={selectClass}>
+                          <option value="">Tous</option>
+                          {genders.map((g) => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Taille</span>
+                        <select value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)} className={selectClass}>
+                          <option value="">Toutes</option>
+                          {sizes.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">État</span>
+                        <select value={selectedCondition} onChange={(e) => setSelectedCondition(e.target.value)} className={selectClass}>
+                          <option value="">Tous</option>
+                          {conditions.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1.5">
+                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Vinted</span>
+                        <select value={selectedVinted} onChange={(e) => setSelectedVinted(e.target.value as "" | "yes" | "no")} className={selectClass}>
+                          <option value="">Tous</option>
+                          <option value="yes">Sur Vinted</option>
+                          <option value="no">Pas sur Vinted</option>
+                        </select>
+                      </label>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           ) : (
@@ -2279,50 +2458,54 @@ function AppContent() {
                 </label>
               </div>
 
-              {/* Retouche IA : détourage sur fond photo + analyse. */}
-              <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Retouche IA
-                </div>
-                <textarea
-                  value={extraDetails}
-                  onChange={(event) => setExtraDetails(event.target.value)}
-                  className="min-h-16 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
-                  placeholder="Précision optionnelle pour l’IA"
-                />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => void removeBackgrounds()}
-                    disabled={Boolean(busy) || form.photos.length === 0}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
-                  >
-                    {busy === "background" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Scissors className="h-4 w-4" />
-                    )}
-                    Détourer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void runAnalysis()}
-                    disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
-                    title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
-                  >
-                    {busy === "analysis" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
-                    Analyser
-                  </button>
-                </div>
-              </div>
+              {AI_ENABLED ? (
+                <>
+                  {/* Retouche IA : détourage sur fond photo + analyse. */}
+                  <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Retouche IA
+                    </div>
+                    <textarea
+                      value={extraDetails}
+                      onChange={(event) => setExtraDetails(event.target.value)}
+                      className="min-h-16 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                      placeholder="Précision optionnelle pour l’IA"
+                    />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => void removeBackgrounds()}
+                        disabled={Boolean(busy) || form.photos.length === 0}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
+                      >
+                        {busy === "background" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Scissors className="h-4 w-4" />
+                        )}
+                        Détourer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runAnalysis()}
+                        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+                        title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {busy === "analysis" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
+                        Analyser
+                      </button>
+                    </div>
+                  </div>
 
-              {tryOnCard(Math.min(activePhotoIndex, Math.max(form.previewUrls.length - 1, 0)))}
+                  {tryOnCard(Math.min(activePhotoIndex, Math.max(form.previewUrls.length - 1, 0)))}
+                </>
+              ) : null}
             </div>
 
             {/* Colonne détails : tous les champs directement modifiables. */}
@@ -2468,6 +2651,19 @@ function AppContent() {
                   <Field label="Quantité">
                     <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
                   </Field>
+                  <Field label="Enseigne">
+                    <select
+                      className={inputClass()}
+                      value={form.outlet}
+                      onChange={(event) => update("outlet", event.target.value as FormState["outlet"])}
+                    >
+                      {OUTLETS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 </div>
               </div>
 
@@ -2480,9 +2676,11 @@ function AppContent() {
                     onChange={(event) => update("description", event.target.value)}
                   />
                 </label>
-                <Field label="Notes IA">
-                  <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
-                </Field>
+                {AI_ENABLED ? (
+                  <Field label="Notes IA">
+                    <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
+                  </Field>
+                ) : null}
               </div>
 
               <label className="flex items-center justify-between gap-3 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
@@ -2644,83 +2842,87 @@ function AppContent() {
                 </div>
               ) : null}
 
-              <textarea
-                value={extraDetails}
-                onChange={(event) => setExtraDetails(event.target.value)}
-                className="min-h-20 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
-                placeholder="Précision optionnelle pour l’IA"
-              />
-
-              <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
-                <label className="flex items-center gap-2 text-sm font-semibold">
-                  <input
-                    type="checkbox"
-                    checked={customBackgroundEnabled}
-                    onChange={(event) => {
-                      setCustomBackgroundEnabled(event.target.checked);
-                      if (!event.target.checked) setCustomBackgroundUrl(null);
-                    }}
-                    className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
+              {AI_ENABLED ? (
+                <>
+                  <textarea
+                    value={extraDetails}
+                    onChange={(event) => setExtraDetails(event.target.value)}
+                    className="min-h-20 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    placeholder="Précision optionnelle pour l’IA"
                   />
-                  Ajouter un fond personnalisé
-                </label>
 
-                {customBackgroundEnabled ? (
-                  <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_112px] sm:items-center">
-                    <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--input)] p-3 text-center">
-                      <ImagePlus className="h-5 w-5 text-[var(--muted-foreground)]" />
-                      <span className="mt-1 text-sm font-medium">
-                        {customBackgroundUrl ? "Changer le fond" : "Choisir une image de fond"}
-                      </span>
+                  <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
+                    <label className="flex items-center gap-2 text-sm font-semibold">
                       <input
-                        className="sr-only"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => handleCustomBackgroundFile(event.target.files?.[0])}
+                        type="checkbox"
+                        checked={customBackgroundEnabled}
+                        onChange={(event) => {
+                          setCustomBackgroundEnabled(event.target.checked);
+                          if (!event.target.checked) setCustomBackgroundUrl(null);
+                        }}
+                        className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
                       />
+                      Ajouter un fond personnalisé
                     </label>
-                    <div className="aspect-square overflow-hidden rounded-md border border-[var(--border)] bg-[var(--muted)]">
-                      <img
-                        src={customBackgroundUrl ?? "/fond.png"}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
+
+                    {customBackgroundEnabled ? (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_112px] sm:items-center">
+                        <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--input)] p-3 text-center">
+                          <ImagePlus className="h-5 w-5 text-[var(--muted-foreground)]" />
+                          <span className="mt-1 text-sm font-medium">
+                            {customBackgroundUrl ? "Changer le fond" : "Choisir une image de fond"}
+                          </span>
+                          <input
+                            className="sr-only"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleCustomBackgroundFile(event.target.files?.[0])}
+                          />
+                        </label>
+                        <div className="aspect-square overflow-hidden rounded-md border border-[var(--border)] bg-[var(--muted)]">
+                          <img
+                            src={customBackgroundUrl ?? "/fond.png"}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => void removeBackgrounds()}
-                  disabled={Boolean(busy) || form.photos.length === 0}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
-                >
-                  {busy === "background" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Scissors className="h-4 w-4" />
-                  )}
-                  Détourer sur fond photo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runAnalysis()}
-                  disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
-                  title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {busy === "analysis" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  Analyser les photos
-                </button>
-              </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => void removeBackgrounds()}
+                      disabled={Boolean(busy) || form.photos.length === 0}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
+                    >
+                      {busy === "background" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Scissors className="h-4 w-4" />
+                      )}
+                      Détourer sur fond photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void runAnalysis()}
+                      disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+                      title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy === "analysis" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      Analyser les photos
+                    </button>
+                  </div>
 
-              {tryOnCard(0)}
+                  {tryOnCard(0)}
+                </>
+              ) : null}
 
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -2857,9 +3059,24 @@ function AppContent() {
                 <Field label="Quantité">
                   <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
                 </Field>
-                <Field label="Notes IA">
-                  <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
+                <Field label="Enseigne">
+                  <select
+                    className={inputClass()}
+                    value={form.outlet}
+                    onChange={(event) => update("outlet", event.target.value as FormState["outlet"])}
+                  >
+                    {OUTLETS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
+                {AI_ENABLED ? (
+                  <Field label="Notes IA">
+                    <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
+                  </Field>
+                ) : null}
               </div>
 
               <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm font-semibold">

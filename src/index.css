@@ -19,8 +19,23 @@
   --primary: #e8306a;
 }
 
+/* Thème sombre : appliqué manuellement (data-theme) ou par défaut système. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #010102;
+  --foreground: #f5f5f5;
+  --card: #111113;
+  --sidebar: #010102;
+  --sidebar-active: #18181b;
+  --muted: #18181b;
+  --muted-foreground: #b8b8b8;
+  --border: #27272a;
+  --input: #111113;
+  --primary: #e8306a;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
     color-scheme: dark;
     --background: #010102;
     --foreground: #f5f5f5;
