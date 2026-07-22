@@ -914,6 +914,15 @@ function vintedNeedsDecision(item: ListedItem) {
   return Boolean(item.vinted && item.vintedAt && Date.now() - item.vintedAt >= VINTED_EXTENSION_AFTER_MS);
 }
 
+function workflowIndex(status: string) {
+  return ({ stock: 0, en_ligne: 1, en_cours_envoi: 2, envoye: 3, gagne: 4 }[status] ?? -1);
+}
+
+function vintedDaysOnline(vintedAt?: number) {
+  if (!vintedAt) return null;
+  return Math.max(0, Math.floor((Date.now() - vintedAt) / (24 * 60 * 60 * 1000)));
+}
+
 /** Thème clair/sombre persistant (comme les autres apps de l'écosystème). */
 function useKlydeTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -948,6 +957,7 @@ function AppContent({
   const [detailItemId, setDetailItemId] = useState<Id<"klydeItems"> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ListedItem | null>(null);
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
+  const [shipmentNote, setShipmentNote] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [articleSheetOpen, setArticleSheetOpen] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
@@ -1088,6 +1098,7 @@ function AppContent({
     setEditingId(null);
     setForm(initialForm);
     setExtraDetails("");
+    setShipmentNote("");
     setPublishOnCreate(false);
     resetCustomBackground();
     setError(null);
@@ -1130,6 +1141,7 @@ function AppContent({
     setActivePhotoIndex(0);
     setJustSaved(false);
     setExtraDetails("");
+    setShipmentNote(item.trackingNotes ?? "");
     resetCustomBackground();
     setError(null);
     setArticleSheetOpen(true);
@@ -1514,6 +1526,26 @@ function AppContent({
       window.setTimeout(() => setJustSaved(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enregistrement impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Sauvegarde les champs de la fiche puis valide l'étape commerciale suivante. */
+  async function advanceArticleWorkflow(status: Exclude<KlydeStatus, "stock" | "stock_b" | "archive">) {
+    if (!editingId) return;
+    setError(null);
+    setBusy("workflow");
+    try {
+      await updateItem({ id: editingId, ...buildItemPayload() });
+      if (status === "envoye") {
+        await updateTrackingNotes({ id: editingId, trackingNotes: shipmentNote || undefined });
+      }
+      await updateStatus({ id: editingId, status });
+      setJustSaved(true);
+      window.setTimeout(() => setJustSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossible de valider cette étape.");
     } finally {
       setBusy(null);
     }
@@ -2565,6 +2597,54 @@ function AppContent({
                   {error}
                 </div>
               ) : null}
+
+              {sheetItem ? (() => {
+                const current = workflowIndex(sheetItem.status);
+                const steps = [
+                  { status: "stock", label: "Article en stock", detail: "Fiche article et photos enregistrées." },
+                  { status: "en_ligne", label: "Mis en ligne sur Vinted", detail: sheetItem.vintedAt ? `En ligne depuis ${vintedDaysOnline(sheetItem.vintedAt)} jour${vintedDaysOnline(sheetItem.vintedAt) === 1 ? "" : "s"}.` : "Prix affiché et case Vinted requis." },
+                  { status: "en_cours_envoi", label: "Vendu", detail: "Prix de vente réel requis." },
+                  { status: "envoye", label: "Expédié", detail: "Numéro de suivi ou note d'expédition requis." },
+                  { status: "gagne", label: "Acheteur a accepté l'article", detail: "Vente définitivement gagnée." },
+                ] as const;
+                return (
+                  <section className="grid gap-3 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
+                    <div>
+                      <h3 className="text-sm font-semibold">Avancement de la vente</h3>
+                      <p className="mt-1 text-xs text-[var(--muted-foreground)]">Chaque étape est sauvegardée et contrôlée avant validation.</p>
+                    </div>
+                    {sheetItem.status === "stock_b" ? (
+                      <p className="rounded-md bg-orange-50 px-3 py-2 text-sm text-orange-800">Cet article est dans le Stock B : il ne suit pas le parcours de vente en ligne.</p>
+                    ) : steps.map((step, index) => {
+                      const done = current >= index;
+                      const next = current + 1 === index;
+                      const target = step.status as Exclude<KlydeStatus, "stock" | "stock_b" | "archive">;
+                      return (
+                        <div key={step.status} className={cn("rounded-xl border p-3", done ? "border-emerald-200 bg-emerald-50" : "border-[var(--border)] bg-[var(--background)]")}>
+                          <div className="flex items-start gap-3">
+                            <span className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold", done ? "bg-emerald-600 text-white" : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{done ? <Check className="h-4 w-4" /> : index + 1}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold">{step.label}</p>
+                              <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{step.detail}</p>
+                            </div>
+                            {next && index > 0 ? (
+                              <button type="button" onClick={() => void advanceArticleWorkflow(target)} disabled={!canUpdate || busy === "workflow"} className="shrink-0 rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                {busy === "workflow" ? "Validation…" : "Valider"}
+                              </button>
+                            ) : null}
+                          </div>
+                          {step.status === "envoye" && next ? (
+                            <label className="mt-3 grid gap-1.5 pl-9 text-xs font-medium text-[var(--muted-foreground)]">
+                              Numéro de suivi ou note d'expédition
+                              <input className={inputClass()} value={shipmentNote} onChange={(event) => setShipmentNote(event.target.value)} placeholder="Ex. Colissimo 8A…" />
+                            </label>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </section>
+                );
+              })() : null}
 
               <div className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
                 <label className="grid gap-1.5">
