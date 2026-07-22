@@ -1551,6 +1551,20 @@ function AppContent({
     }
   }
 
+  /** Revenir à une étape précédente sans effacer les informations déjà saisies. */
+  async function returnToWorkflowStep(status: KlydeStatus) {
+    if (!editingId) return;
+    setError(null);
+    setBusy("workflow");
+    try {
+      await updateStatus({ id: editingId, status });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossible de revenir à cette étape.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const formCategoryKey = findCategoryKey(form.category);
   const formSubcategories = formCategoryKey ? categoryTree[formCategoryKey] : [];
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
@@ -2620,11 +2634,11 @@ function AppContent({
                       const next = current + 1 === index;
                       const target = step.status as Exclude<KlydeStatus, "stock" | "stock_b" | "archive">;
                       return (
-                        <div key={step.status} className={cn("rounded-xl border p-3", done ? "border-emerald-200 bg-emerald-50" : "border-[var(--border)] bg-[var(--background)]")}>
+                        <div key={step.status} className={cn("rounded-xl border p-3", done ? "border-emerald-500/40 bg-emerald-500/10" : "border-[var(--border)] bg-[var(--background)]")}>
                           <div className="flex items-start gap-3">
                             <span className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold", done ? "bg-emerald-600 text-white" : "bg-[var(--muted)] text-[var(--muted-foreground)]")}>{done ? <Check className="h-4 w-4" /> : index + 1}</span>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold">{step.label}</p>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{step.label}</p>
                               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{step.detail}</p>
                             </div>
                             {next && index > 0 ? (
@@ -2632,7 +2646,21 @@ function AppContent({
                                 {busy === "workflow" ? "Validation…" : "Valider"}
                               </button>
                             ) : null}
+                            {done && index < current ? (
+                              <button type="button" onClick={() => void returnToWorkflowStep(step.status)} disabled={!canUpdate || busy === "workflow"} className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50">
+                                Revenir ici
+                              </button>
+                            ) : null}
                           </div>
+                          {step.status === "en_cours_envoi" && next ? (
+                            <label className="mt-3 grid gap-1.5 pl-9 text-xs font-medium text-[var(--muted-foreground)]">
+                              Prix de vente réel
+                              <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                                <input className="h-10 w-full bg-transparent text-base font-semibold text-[var(--foreground)] outline-none" inputMode="decimal" value={form.actualSalePrice} onChange={(event) => update("actualSalePrice", event.target.value)} placeholder="Prix encaissé" />
+                                <span className="font-semibold text-[var(--muted-foreground)]">€</span>
+                              </div>
+                            </label>
+                          ) : null}
                           {step.status === "envoye" && next ? (
                             <label className="mt-3 grid gap-1.5 pl-9 text-xs font-medium text-[var(--muted-foreground)]">
                               Numéro de suivi ou note d'expédition
