@@ -1775,18 +1775,6 @@ function AppContent({
           <VintedFlag on={Boolean(item.vinted)} />
         </div>
       </td>
-      <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-        <div className="w-52 space-y-2">
-          {vintedNeedsDecision(item) && canUpdate ? (
-            <div className="grid gap-1 rounded-md bg-amber-50 p-2 text-xs">
-              <span className="font-semibold text-amber-900">Vinted depuis 3 semaines</span>
-              <button type="button" onClick={() => void moveToStockB({ id: item._id })} className="rounded border border-amber-300 px-2 py-1 font-semibold text-amber-900">Sortir du stock</button>
-              <button type="button" onClick={() => void extendVintedListing({ id: item._id })} className="rounded bg-amber-500 px-2 py-1 font-semibold text-white">Prolonger en ligne</button>
-            </div>
-          ) : null}
-          {actionButtons(item)}
-        </div>
-      </td>
     </tr>
   );
 
@@ -2140,7 +2128,7 @@ function AppContent({
               </div>
             ) : (
               <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
-                <table className="min-w-[820px] w-full text-sm">
+                <table className="min-w-[700px] w-full text-sm">
                   <thead className="bg-[var(--card)] text-[var(--muted-foreground)]">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">Article</th>
@@ -2149,7 +2137,6 @@ function AppContent({
                       <th className="px-4 py-3 text-left font-medium">Emplacement</th>
                       <th className="px-4 py-3 text-left font-medium">Prix</th>
                       <th className="px-4 py-3 text-left font-medium">Statut</th>
-                      <th className="px-4 py-3 text-left font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
