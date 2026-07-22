@@ -3182,9 +3182,53 @@ function BoutiqueCatalog({
     gender: gender || undefined,
     size: size || undefined,
   });
+  const heroItem = useQuery(api.klyde.getFeatured, {});
 
   return (
     <main>
+      <section className="relative h-[calc(100svh-8.5rem)] min-h-[34rem] overflow-hidden bg-[#171717] text-white sm:h-[calc(100svh-9.5rem)]">
+        {heroItem?.photoUrls[0] ? (
+          <button
+            type="button"
+            onClick={() => goTo(`/boutique/article/${heroItem._id}`)}
+            className="group absolute inset-0 block h-full w-full text-left"
+          >
+            <img
+              src={heroItem.photoUrls[0]}
+              alt={heroItem.title}
+              className="h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.015]"
+            />
+          </button>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-white/30">
+            <ShoppingBag className="h-24 w-24" />
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
+        <div className="absolute left-5 top-5 rounded-full bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1f1b18] sm:left-8 sm:top-8">
+          Article phare
+        </div>
+        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8 lg:p-12">
+          <div className="max-w-md">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/75">
+              {heroItem?.brand || "Sélection Klyde"}
+            </p>
+            <h1 className="mt-3 text-3xl font-medium tracking-tight sm:text-5xl">
+              {heroItem?.title ?? "La prochaine pièce Klyde arrive bientôt"}
+            </h1>
+            {heroItem?.description ? (
+              <p className="mt-4 line-clamp-3 text-sm leading-6 text-white/85 sm:text-base sm:leading-7">
+                {heroItem.description}
+              </p>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-white/85 sm:text-base">
+                Une pièce sélectionnée, prête à rejoindre votre vestiaire.
+              </p>
+            )}
+            {heroItem ? <p className="mt-5 text-lg font-medium sm:text-xl">{formatPrice(heroItem.price)}</p> : null}
+          </div>
+        </div>
+      </section>
       <section id="catalogue" className="bg-white">
         <div className="flex items-center justify-between border-b border-[#1f1b18]/10 px-5 py-3 sm:px-8">
           <p className="text-xs tracking-[0.04em] text-[#1f1b18]/60">Sélection Klyde</p>
