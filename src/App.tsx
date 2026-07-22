@@ -2646,9 +2646,9 @@ function AppContent({
                                 {busy === "workflow" ? "Validation…" : "Valider"}
                               </button>
                             ) : null}
-                            {done && index < current ? (
-                              <button type="button" onClick={() => void returnToWorkflowStep(step.status)} disabled={!canUpdate || busy === "workflow"} className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50">
-                                Revenir ici
+                            {done && index === current && index > 0 ? (
+                              <button type="button" onClick={() => void returnToWorkflowStep(steps[index - 1].status)} disabled={!canUpdate || busy === "workflow"} className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50">
+                                Décocher
                               </button>
                             ) : null}
                           </div>
