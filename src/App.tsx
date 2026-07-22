@@ -42,7 +42,7 @@ import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
 type KlydeStatus = "stock" | "stock_b" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
-type AppTab = "stock" | "stock_b" | "prolonges" | "suivi";
+type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique";
 
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
@@ -888,6 +888,7 @@ function AppContent({
   const setStockBDisposition = useMutation(api.klyde.setStockBDisposition);
   const removeItem = useMutation(api.klyde.remove);
   const setFeatured = useMutation(api.klyde.setFeatured);
+  const setBoutiquePublished = useMutation(api.klyde.setBoutiquePublished);
   const access = useQuery(api.permissions.myAccess);
   const points = useQuery(api.points.myPoints, {}) ?? 100;
   const ensurePoints = useMutation(api.points.ensureMine);
@@ -1121,6 +1122,14 @@ function AppContent({
     }
   }
 
+  async function toggleBoutiquePublished(item: ListedItem) {
+    try {
+      await setBoutiquePublished({ id: item._id, published: !item.publishedOnBoutique });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publication Boutique impossible.");
+    }
+  }
+
   async function saveTrackingNotes() {
     if (!detailItem) return;
     setBusy("notes");
@@ -1292,7 +1301,7 @@ function AppContent({
       if (editingId) {
         await updateItem({ id: editingId, ...payload });
       } else {
-        await createItem({ ...payload, publishOnline: publishOnCreate || undefined });
+        await createItem({ ...payload, publishOnBoutique: publishOnCreate || undefined });
       }
       closeDrawer();
     } catch (err) {
@@ -1617,6 +1626,7 @@ function AppContent({
           {navButton("stock_b", <Package className="h-4 w-4" />, "Stock B")}
           {navButton("prolonges", <ArrowRight className="h-4 w-4" />, "Articles prolongés")}
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
+          {navButton("boutique", <ShoppingBag className="h-4 w-4" />, "Boutique")}
         </nav>
         <div className="space-y-3 border-t border-[var(--border)] p-4">
           <button
@@ -1655,7 +1665,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : "Suivi"}
           </h1>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {canCreate ? (
@@ -1691,7 +1701,7 @@ function AppContent({
           </div>
         </header>
 
-        <div className="grid grid-cols-4 border-b border-[var(--border)] md:hidden">
+        <div className="grid grid-cols-5 border-b border-[var(--border)] md:hidden">
           <button
             type="button"
             onClick={() => setActiveTab("stock")}
@@ -1708,10 +1718,11 @@ function AppContent({
           </button>
           <button type="button" onClick={() => setActiveTab("stock_b")} className={cn("py-3 text-sm font-medium", activeTab === "stock_b" && "bg-[var(--muted)]")}>Stock B</button>
           <button type="button" onClick={() => setActiveTab("prolonges")} className={cn("py-3 text-sm font-medium", activeTab === "prolonges" && "bg-[var(--muted)]")}>Prolongés</button>
+          <button type="button" onClick={() => setActiveTab("boutique")} className={cn("py-3 text-sm font-medium", activeTab === "boutique" && "bg-[var(--muted)]")}>Boutique</button>
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
-          {activeTab !== "suivi" ? (
+          {activeTab !== "suivi" && activeTab !== "boutique" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -1850,7 +1861,9 @@ function AppContent({
             </div>
           )}
 
-          {items === undefined ? (
+          {activeTab === "boutique" ? (
+            <StorefrontSettings canManage={canPublish} />
+          ) : items === undefined ? (
             <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
               <Loader2 className="h-4 w-4 animate-spin" />
               Chargement du stock
@@ -2513,7 +2526,14 @@ function AppContent({
                 </div>
               ) : null}
 
-              {canPublish && sheetItem?.status === "en_ligne" ? (
+              {canPublish && sheetItem ? (
+                <label className="flex items-center gap-3 rounded-md border border-[var(--border)] p-3 text-sm font-semibold">
+                  <input type="checkbox" checked={Boolean(sheetItem.publishedOnBoutique)} onChange={() => void toggleBoutiquePublished(sheetItem)} className="h-4 w-4 accent-[var(--primary)]" />
+                  Mettre en ligne sur la boutique
+                </label>
+              ) : null}
+
+              {canPublish && sheetItem?.publishedOnBoutique ? (
                 <button type="button" onClick={() => void toggleFeatured(sheetItem._id)} className={cn("inline-flex h-11 items-center justify-center gap-2 rounded-md border text-sm font-semibold", sheetItem.featured ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]" : "border-[var(--border)]")}>
                   <Star className={cn("h-4 w-4", sheetItem.featured && "fill-[var(--primary)]")} />
                   {sheetItem.featured ? "Retirer de la mise en avant" : "Mettre en avant"}
@@ -2857,7 +2877,7 @@ function AppContent({
                   : editingId
                     ? "Enregistrer les modifications"
                     : publishOnCreate
-                      ? "Ajouter et mettre en ligne"
+                      ? "Ajouter et publier sur la boutique"
                       : "Ajouter au stock"}
               </button>
             </div>
@@ -3142,6 +3162,72 @@ function BoutiqueHeader() {
   );
 }
 
+function StorefrontSettings({ canManage }: { canManage: boolean }) {
+  const storefront = useQuery(api.klyde.getStorefront);
+  const updateStorefront = useMutation(api.klyde.updateStorefront);
+  const upload = useUpload();
+  const [uploading, setUploading] = useState<"homme" | "femme" | null>(null);
+  const [error, setError] = useState("");
+
+  async function changeCover(kind: "homme" | "femme", file?: File) {
+    if (!file || !canManage) return;
+    setUploading(kind);
+    setError("");
+    try {
+      const storageId = await upload(file);
+      if (kind === "homme") await updateStorefront({ hommeCover: storageId });
+      else await updateStorefront({ femmeCover: storageId });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Impossible d'enregistrer cette photo.");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  const covers = [
+    {
+      key: "homme" as const,
+      label: "Nouveautés homme",
+      description: "Photo de gauche du header de la boutique.",
+      image: storefront?.hommeUrl ?? SHOP_EDITORIAL_COVERS.homme,
+    },
+    {
+      key: "femme" as const,
+      label: "Nouveautés femme",
+      description: "Photo de droite du header de la boutique.",
+      image: storefront?.femmeUrl ?? SHOP_EDITORIAL_COVERS.femme,
+    },
+  ];
+
+  return (
+    <section className="mx-auto max-w-5xl">
+      <div className="mb-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">Personnalisation boutique</p>
+        <h2 className="mt-1 text-2xl font-semibold">Header éditorial</h2>
+        <p className="mt-2 text-sm text-[var(--muted-foreground)]">Choisissez les deux visuels affichés en plein écran à l'arrivée sur la boutique.</p>
+      </div>
+      {!canManage ? <p className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">Vous pouvez prévisualiser les visuels, mais vous n'avez pas le droit de les modifier.</p> : null}
+      {error ? <p className="mb-5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
+      <div className="grid gap-6 md:grid-cols-2">
+        {covers.map((cover) => (
+          <article key={cover.key} className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]">
+            <img src={cover.image} alt={cover.label} className="aspect-[4/5] w-full bg-[var(--muted)] object-cover" />
+            <div className="p-5">
+              <h3 className="font-semibold">{cover.label}</h3>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">{cover.description}</p>
+              <label className={cn("mt-5 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white", (!canManage || uploading !== null) && "cursor-not-allowed opacity-60")}>
+                {uploading === cover.key ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                {uploading === cover.key ? "Import en cours..." : "Changer la photo"}
+                <input type="file" accept="image/*" className="sr-only" disabled={!canManage || uploading !== null} onChange={(event) => { void changeCover(cover.key, event.target.files?.[0]); event.currentTarget.value = ""; }} />
+              </label>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function BoutiqueShell({ route }: { route: ShopRoute }) {
   const cart = useKlydeCart();
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -3181,6 +3267,7 @@ function BoutiqueCatalog({
   const [category, setCategory] = useState("");
   const [gender, setGender] = useState("");
   const [size, setSize] = useState("");
+  const storefront = useQuery(api.klyde.getStorefront);
   const items = useQuery(api.klyde.listPublic, {
     searchText: search || undefined,
     category: category || undefined,
@@ -3192,8 +3279,8 @@ function BoutiqueCatalog({
     <main>
       <section className="grid h-[calc(100svh-8.5rem)] min-h-[36rem] overflow-hidden bg-black text-white md:grid-cols-2 sm:h-[calc(100svh-9.5rem)]">
         {([
-          { label: "Nouveautés homme", gender: "Homme", image: SHOP_EDITORIAL_COVERS.homme, position: "object-[center_28%]" },
-          { label: "Nouveautés femme", gender: "Femme", image: SHOP_EDITORIAL_COVERS.femme, position: "object-[center_35%]" },
+          { label: "Nouveautés homme", gender: "Homme", image: storefront?.hommeUrl ?? SHOP_EDITORIAL_COVERS.homme, position: "object-[center_28%]" },
+          { label: "Nouveautés femme", gender: "Femme", image: storefront?.femmeUrl ?? SHOP_EDITORIAL_COVERS.femme, position: "object-[center_35%]" },
         ] as const).map((cover) => (
           <button
             key={cover.gender}
