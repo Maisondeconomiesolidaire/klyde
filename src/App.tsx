@@ -3215,7 +3215,7 @@ function BoutiqueCatalog({
           type="button"
           onClick={() => heroItem && goTo(`/boutique/article/${heroItem._id}`)}
           disabled={!heroItem}
-          className="group relative block min-h-[420px] overflow-hidden bg-[#010102] text-left"
+          className="group relative block h-screen min-h-[420px] overflow-hidden bg-[#010102] text-left"
         >
           {heroItem?.photoUrls[0] ? (
             <img
@@ -3305,7 +3305,7 @@ function BoutiqueCatalog({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-x-5 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className="grid grid-cols-2 border-l border-t border-[#1f1b18]/10 sm:grid-cols-3 lg:grid-cols-4">
             {items.map((item) => (
               <ShopProductCard key={item._id} item={item} cart={cart} wishlist={wishlist} />
             ))}
@@ -3340,16 +3340,16 @@ function ShopProductCard({
   }
 
   return (
-    <article className="group">
+    <article className="group border-b border-r border-[#1f1b18]/10 bg-white p-3 sm:p-4">
       <div
-        className="relative aspect-[3/4] overflow-hidden bg-[#f6eee5]"
+        className="relative aspect-square overflow-hidden bg-[#f7f7f5]"
         onMouseEnter={() => hasMultiplePhotos && setPhotoIndex(1)}
         onMouseLeave={() => setPhotoIndex(0)}
       >
         <button
           type="button"
           onClick={() => void wishlist.toggle(item._id)}
-          className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f6eee5]/90 text-[#1f1b18] shadow-sm"
+          className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center text-[#1f1b18]/75 transition hover:text-[#1f1b18]"
           aria-label="Sauvegarder l’article"
         >
           <Heart className={cn("h-5 w-5", saved && "fill-[var(--primary)] text-[var(--primary)]")} />
@@ -3370,15 +3370,12 @@ function ShopProductCard({
             <Package className="h-12 w-12" />
           </div>
         )}
-        <div className="absolute left-3 top-3 bg-[#f6eee5]/92 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
-          {item.category}
-        </div>
         {hasMultiplePhotos ? (
           <>
             <button
               type="button"
               onClick={previousPhoto}
-              className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[#1f1b18] opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100 focus:opacity-100"
+              className="absolute left-2 top-1/2 inline-flex h-10 w-8 -translate-y-1/2 items-center justify-center text-[#1f1b18]/70 opacity-0 transition hover:text-[#1f1b18] group-hover:opacity-100 focus:opacity-100"
               aria-label="Photo précédente"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -3386,7 +3383,7 @@ function ShopProductCard({
             <button
               type="button"
               onClick={nextPhoto}
-              className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[#1f1b18] opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100 focus:opacity-100"
+              className="absolute right-2 top-1/2 inline-flex h-10 w-8 -translate-y-1/2 items-center justify-center text-[#1f1b18]/70 opacity-0 transition hover:text-[#1f1b18] group-hover:opacity-100 focus:opacity-100"
               aria-label="Photo suivante"
             >
               <ChevronRight className="h-5 w-5" />
@@ -3399,13 +3396,13 @@ function ShopProductCard({
           </>
         ) : null}
       </div>
-      <div className="pt-4">
+      <div className="pt-3">
         <div className="flex items-start justify-between gap-4">
           <div>
             <button
               type="button"
               onClick={() => goTo(`/boutique/article/${item._id}`)}
-              className="line-clamp-2 text-left text-sm font-semibold uppercase tracking-[0.08em] hover:text-[var(--primary)]"
+              className="line-clamp-2 text-left text-sm font-medium tracking-[0.02em] hover:text-[var(--primary)]"
             >
               {item.title}
             </button>
@@ -3419,7 +3416,7 @@ function ShopProductCard({
           type="button"
           onClick={() => (inCart ? goTo("/boutique/panier") : cart.add(item._id))}
           className={cn(
-            "mt-4 inline-flex h-10 w-full items-center justify-center gap-2 border px-4 text-xs font-semibold uppercase tracking-[0.16em] transition",
+            "mt-3 inline-flex h-9 w-full items-center justify-center gap-2 border px-4 text-[11px] font-semibold uppercase tracking-[0.14em] transition",
             inCart
               ? "border-[#010102] bg-[#010102] text-white"
               : "border-[#1f1b18]/18 hover:border-[var(--primary)] hover:text-[var(--primary)]",
