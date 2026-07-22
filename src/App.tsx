@@ -1653,7 +1653,7 @@ function AppContent({
             <KlydeUserAvatar />
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">{user?.firstName ?? user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-bold text-[var(--primary)]">{points} pts <span title="Les points récompensent vos réservations, retours et participations utiles.">?</span></span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-bold text-[var(--primary)]">{points} pts <span title="Les points récompensent vos réservations, retours et participations utiles. Ils pourront bientôt débloquer des cadeaux et des récompenses.">?</span></span>
             </span>
           </button>
         </div>
