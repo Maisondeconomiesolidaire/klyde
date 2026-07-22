@@ -180,24 +180,10 @@ const categoryTree = {
     "Cravates et nœuds papillon",
     "Accessoires cheveux",
   ],
-  "Bébé et enfant": [
-    "Vêtements de naissance",
-    "Bodies",
-    "Pyjamas",
-    "Hauts",
-    "Bas",
-    "Robes et ensembles",
-    "Manteaux",
-    "Sport enfant",
-    "Maillots de bain enfant",
-    "Sous-vêtements enfant",
-    "Chaussures enfant",
-    "Accessoires enfant",
-  ],
 } as const;
 
 const categories = Object.keys(categoryTree) as Array<keyof typeof categoryTree>;
-const genders = ["Femme", "Homme", "Enfant", "Bébé", "Unisexe"];
+const genders = ["Femme", "Homme", "Unisexe"];
 const sizes = [
   "XXS",
   "XS",
@@ -216,26 +202,6 @@ const sizes = [
   "46",
   "48",
   "50",
-  "Naissance",
-  "1 mois",
-  "3 mois",
-  "6 mois",
-  "9 mois",
-  "12 mois",
-  "18 mois",
-  "2 ans",
-  "3 ans",
-  "4 ans",
-  "5 ans",
-  "6 ans",
-  "8 ans",
-  "10 ans",
-  "12 ans",
-  "14 ans",
-  "16 ans",
-  "Pointure 20-24",
-  "Pointure 25-29",
-  "Pointure 30-34",
   "Pointure 35-39",
   "Pointure 40-44",
   "Pointure 45+",
@@ -309,16 +275,6 @@ const shopMenus = [
       ["Sacs & maroquinerie", ["Sacs", "Sacs à dos", "Portefeuilles et maroquinerie", "Ceintures"]],
       ["Accessoires", ["Chapeaux et bonnets", "Écharpes et foulards", "Gants", "Cravates et nœuds papillon"]],
       ["Bijoux & montres", ["Bijoux", "Montres", "Lunettes", "Accessoires cheveux"]],
-    ],
-  },
-  {
-    label: "Enfant",
-    category: "Bébé et enfant",
-    gender: "Enfant",
-    groups: [
-      ["Bébé", ["Vêtements de naissance", "Bodies", "Pyjamas"]],
-      ["Enfant", ["Hauts", "Bas", "Robes et ensembles", "Manteaux", "Sport enfant"]],
-      ["Plus", ["Maillots de bain enfant", "Sous-vêtements enfant", "Chaussures enfant", "Accessoires enfant"]],
     ],
   },
 ] as const;
@@ -2137,7 +2093,7 @@ function AppContent({
               </button>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="truncate text-base font-semibold">Fiche article</h2>
+                  <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{form.title || "Nouvel article"}</h1>
                   {sheetItem ? <StatusPill status={sheetItem.status} /> : null}
                   {sheetItem && workflowIndex(sheetItem.status) >= workflowIndex("en_ligne") ? <VintedBadge /> : null}
                 </div>
