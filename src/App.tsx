@@ -3015,10 +3015,10 @@ function BoutiqueHeader() {
         <button
           type="button"
           onClick={() => goTo("/boutique")}
-          className="absolute left-1/2 -translate-x-1/2 text-xl font-semibold tracking-[0.18em] sm:text-3xl"
+          className="absolute left-1/2 -translate-x-1/2"
           aria-label="Accueil Klyde"
         >
-          KLYDE
+          <Logo />
         </button>
         <div className="flex items-center gap-1 sm:gap-4">
           <button
@@ -3466,7 +3466,7 @@ function BoutiqueFooter() {
     <footer className="mt-16 border-t border-[#1f1b18]/10 bg-[#010102] text-white/75">
       <div className="mx-auto grid max-w-[96rem] gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr_1fr] lg:px-8">
         <div>
-          <img src="/logo-light.png" alt="Klyd" className="h-10 w-auto object-contain" />
+          <Logo theme="dark" />
           <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">
             Sélection textile haut de gamme, préparée pièce par pièce.
           </p>
