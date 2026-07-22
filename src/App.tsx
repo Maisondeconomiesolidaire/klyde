@@ -991,6 +991,7 @@ function AppContent({
   const createItem = useMutation(api.klyde.create);
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
+  const advanceWorkflow = useMutation(api.klyde.advanceWorkflow);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const moveToStockB = useMutation(api.klyde.moveToStockB);
   const extendVintedListing = useMutation(api.klyde.extendVintedListing);
@@ -1541,7 +1542,7 @@ function AppContent({
       if (status === "envoye") {
         await updateTrackingNotes({ id: editingId, trackingNotes: shipmentNote || undefined });
       }
-      await updateStatus({ id: editingId, status });
+      await advanceWorkflow({ id: editingId, status });
       setJustSaved(true);
       window.setTimeout(() => setJustSaved(false), 2000);
     } catch (err) {
