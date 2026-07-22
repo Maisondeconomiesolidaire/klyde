@@ -38,8 +38,8 @@ import { HelpButton } from "./components/HelpButton";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 
-type KlydeStatus = "stock" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
-type AppTab = "stock" | "suivi";
+type KlydeStatus = "stock" | "stock_b" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
+type AppTab = "stock" | "stock_b" | "prolonges" | "suivi";
 
 /**
  * Fonctionnalités IA (analyse photos, détourage, essayage FASHN) masquées pour
@@ -84,6 +84,7 @@ type FormState = {
   color: string;
   material: string;
   price: string;
+  actualSalePrice: string;
   parcelSize: string;
   gender: string;
   style: string;
@@ -129,6 +130,7 @@ const initialForm: FormState = {
   color: "",
   material: "",
   price: "",
+  actualSalePrice: "",
   parcelSize: "Moyen",
   gender: "",
   style: "",
@@ -461,6 +463,7 @@ function statusLabel(status: string) {
   return (
     {
       stock: "Stock",
+      stock_b: "Stock B",
       en_ligne: "En ligne",
       en_cours_envoi: "En cours d’envoi",
       envoye: "Envoyé",
@@ -477,6 +480,7 @@ function statusPillClass(status: string) {
   return (
     {
       stock: "bg-[var(--primary)] text-white",
+      stock_b: "bg-orange-600 text-white",
       en_ligne: "bg-sky-500 text-white",
       en_cours_envoi: "bg-amber-500 text-white",
       envoye: "bg-violet-500 text-white",
@@ -905,6 +909,11 @@ function ArticleThumb({ item }: { item: ListedItem }) {
   );
 }
 
+const VINTED_EXTENSION_AFTER_MS = 21 * 24 * 60 * 60 * 1000;
+function vintedNeedsDecision(item: ListedItem) {
+  return Boolean(item.vinted && item.vintedAt && Date.now() - item.vintedAt >= VINTED_EXTENSION_AFTER_MS);
+}
+
 /** Thème clair/sombre persistant (comme les autres apps de l'écosystème). */
 function useKlydeTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -973,6 +982,9 @@ function AppContent({
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
+  const moveToStockB = useMutation(api.klyde.moveToStockB);
+  const extendVintedListing = useMutation(api.klyde.extendVintedListing);
+  const setStockBDisposition = useMutation(api.klyde.setStockBDisposition);
   const removeItem = useMutation(api.klyde.remove);
   const setFeatured = useMutation(api.klyde.setFeatured);
   const access = useQuery(api.permissions.myAccess);
@@ -1030,6 +1042,12 @@ function AppContent({
       selectedVinted,
     ],
   );
+  const tabItems = useMemo(() => {
+    if (activeTab === "stock") return visibleItems.filter((item) => itemStatus(item) !== "stock_b" && !item.vintedExtensionCount);
+    if (activeTab === "stock_b") return visibleItems.filter((item) => itemStatus(item) === "stock_b");
+    if (activeTab === "prolonges") return visibleItems.filter((item) => (item.vintedExtensionCount ?? 0) > 0 && itemStatus(item) !== "stock_b");
+    return visibleItems;
+  }, [activeTab, visibleItems]);
   const locationOptions = useMemo(
     () =>
       Array.from(new Set(allItems.map((item) => item.location ?? "").filter(Boolean))).sort((a, b) =>
@@ -1090,6 +1108,7 @@ function AppContent({
       color: item.color ?? "",
       material: item.material ?? "",
       price: item.price != null ? String(item.price) : "",
+      actualSalePrice: item.actualSalePrice != null ? String(item.actualSalePrice) : "",
       parcelSize: item.parcelSize ?? "Moyen",
       gender: item.gender ?? "",
       style: item.style ?? "",
@@ -1443,6 +1462,7 @@ function AppContent({
       color: form.color || undefined,
       material: (showMaterialField && form.material) || undefined,
       price: asNumber(form.price),
+      actualSalePrice: asNumber(form.actualSalePrice),
       parcelSize: form.parcelSize || undefined,
       gender: form.gender || undefined,
       style: form.style || undefined,
@@ -1641,23 +1661,15 @@ function AppContent({
           </button>
         ) : null
       ) : null}
-      {canPublish && item.status === "en_ligne" ? (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            void toggleFeatured(item._id);
-          }}
-          className={cn(
-            "inline-flex h-9 items-center justify-center gap-2 rounded-md border text-sm font-medium",
-            item.featured
-              ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
-              : "border-[var(--border)]",
-          )}
-        >
-          <Star className={cn("h-4 w-4", item.featured && "fill-[var(--primary)]")} />
-          {item.featured ? "En avant" : "Mettre en avant"}
-        </button>
+      {activeTab === "stock_b" && canUpdate ? (
+        <>
+          <button type="button" onClick={(event) => { event.stopPropagation(); void setStockBDisposition({ id: item._id, disposition: "vente_exceptionnelle" }); }} className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--primary)] text-sm font-medium text-[var(--primary)]">
+            Vente exceptionnelle
+          </button>
+          <button type="button" onClick={(event) => { event.stopPropagation(); void setStockBDisposition({ id: item._id, disposition: "magasin" }); }} className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border)] text-sm font-medium">
+            Mettre en magasin
+          </button>
+        </>
       ) : null}
       {canDelete ? (
         <button
@@ -1713,6 +1725,12 @@ function AppContent({
           </div>
         </div>
         {actionButtons(item)}
+        {vintedNeedsDecision(item) && canUpdate ? (
+          <div className="grid grid-cols-2 gap-2 border-t border-amber-200 pt-2">
+            <button type="button" onClick={(event) => { event.stopPropagation(); void moveToStockB({ id: item._id }); }} className="rounded-md border border-amber-300 px-2 py-1.5 text-xs font-semibold text-amber-800">Sortir du stock</button>
+            <button type="button" onClick={(event) => { event.stopPropagation(); void extendVintedListing({ id: item._id }); }} className="rounded-md bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white">Prolonger en ligne</button>
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -1758,7 +1776,16 @@ function AppContent({
         </div>
       </td>
       <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-        <div className="w-52">{actionButtons(item)}</div>
+        <div className="w-52 space-y-2">
+          {vintedNeedsDecision(item) && canUpdate ? (
+            <div className="grid gap-1 rounded-md bg-amber-50 p-2 text-xs">
+              <span className="font-semibold text-amber-900">Vinted depuis 3 semaines</span>
+              <button type="button" onClick={() => void moveToStockB({ id: item._id })} className="rounded border border-amber-300 px-2 py-1 font-semibold text-amber-900">Sortir du stock</button>
+              <button type="button" onClick={() => void extendVintedListing({ id: item._id })} className="rounded bg-amber-500 px-2 py-1 font-semibold text-white">Prolonger en ligne</button>
+            </div>
+          ) : null}
+          {actionButtons(item)}
+        </div>
       </td>
     </tr>
   );
@@ -1856,6 +1883,8 @@ function AppContent({
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-4">
           {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
+          {navButton("stock_b", <Package className="h-4 w-4" />, "Stock B")}
+          {navButton("prolonges", <ArrowRight className="h-4 w-4" />, "Articles prolongés")}
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
         </nav>
         <div className="space-y-3 border-t border-[var(--border)] p-4">
@@ -1895,7 +1924,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : "Suivi"}
           </h1>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {canCreate ? (
@@ -1931,7 +1960,7 @@ function AppContent({
           </div>
         </header>
 
-        <div className="grid grid-cols-2 border-b border-[var(--border)] md:hidden">
+        <div className="grid grid-cols-4 border-b border-[var(--border)] md:hidden">
           <button
             type="button"
             onClick={() => setActiveTab("stock")}
@@ -1946,10 +1975,12 @@ function AppContent({
           >
             Suivi
           </button>
+          <button type="button" onClick={() => setActiveTab("stock_b")} className={cn("py-3 text-sm font-medium", activeTab === "stock_b" && "bg-[var(--muted)]")}>Stock B</button>
+          <button type="button" onClick={() => setActiveTab("prolonges")} className={cn("py-3 text-sm font-medium", activeTab === "prolonges" && "bg-[var(--muted)]")}>Prolongés</button>
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
-          {activeTab === "stock" ? (
+          {activeTab !== "suivi" ? (
             <div className="mb-5 flex gap-1 border-b border-[var(--border)]">
               {([
                 ["", "Tous"],
@@ -1973,7 +2004,7 @@ function AppContent({
             </div>
           ) : null}
 
-          {activeTab === "stock" ? (
+          {activeTab !== "suivi" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -2000,6 +2031,7 @@ function AppContent({
                     "h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3 text-sm outline-none focus:border-[var(--primary)]";
                   const filterStatuses: KlydeStatus[] = [
                     "stock",
+                    "stock_b",
                     "en_ligne",
                     "en_cours_envoi",
                     "envoye",
@@ -2101,8 +2133,8 @@ function AppContent({
               <Loader2 className="h-4 w-4 animate-spin" />
               Chargement du stock
             </div>
-          ) : activeTab === "stock" ? (
-            visibleItems.length === 0 ? (
+          ) : activeTab !== "suivi" ? (
+            tabItems.length === 0 ? (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-[var(--muted-foreground)]">
                 Aucun article.
               </div>
@@ -2121,7 +2153,7 @@ function AppContent({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
-                    {visibleItems.map((item) => articleRow(item))}
+                    {tabItems.map((item) => articleRow(item))}
                   </tbody>
                 </table>
               </div>
@@ -2558,7 +2590,7 @@ function AppContent({
                   />
                 </label>
                 <label className="grid gap-1.5">
-                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Prix</span>
+                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Prix affiché</span>
                   <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
                     <input
                       className="h-12 w-full bg-transparent text-2xl font-bold outline-none"
@@ -2569,6 +2601,14 @@ function AppContent({
                     />
                     <span className="text-xl font-semibold text-[var(--muted-foreground)]">€</span>
                   </div>
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Prix de vente réel</span>
+                  <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                    <input className="h-12 w-full bg-transparent text-2xl font-bold outline-none" inputMode="decimal" value={form.actualSalePrice} onChange={(event) => update("actualSalePrice", event.target.value)} placeholder="Prix encaissé" />
+                    <span className="text-xl font-semibold text-[var(--muted-foreground)]">€</span>
+                  </div>
+                  <span className="text-xs text-[var(--muted-foreground)]">À renseigner si une offre est acceptée ; utilisé pour le chiffre d’affaires.</span>
                 </label>
               </div>
 
@@ -2728,6 +2768,27 @@ function AppContent({
                   className="h-5 w-5 rounded border-[var(--border)] accent-[var(--primary)]"
                 />
               </label>
+
+              {sheetItem?.vintedExtensionCount ? (
+                <p className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-900">
+                  Annonce Vinted prolongée {sheetItem.vintedExtensionCount} fois.
+                </p>
+              ) : null}
+
+              {canUpdate && sheetItem && vintedNeedsDecision(sheetItem) ? (
+                <div className="grid gap-2 rounded-3xl border border-amber-200 bg-amber-50 p-5 sm:grid-cols-2">
+                  <p className="sm:col-span-2 text-sm font-semibold text-amber-900">Cette annonce Vinted est en ligne depuis plus de 3 semaines.</p>
+                  <button type="button" onClick={() => void moveToStockB({ id: sheetItem._id })} className="h-10 rounded-md border border-amber-300 text-sm font-semibold text-amber-900">Sortir du stock</button>
+                  <button type="button" onClick={() => void extendVintedListing({ id: sheetItem._id })} className="h-10 rounded-md bg-amber-500 text-sm font-semibold text-white">Prolonger en ligne</button>
+                </div>
+              ) : null}
+
+              {canPublish && sheetItem?.status === "en_ligne" ? (
+                <button type="button" onClick={() => void toggleFeatured(sheetItem._id)} className={cn("inline-flex h-11 items-center justify-center gap-2 rounded-md border text-sm font-semibold", sheetItem.featured ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]" : "border-[var(--border)]")}>
+                  <Star className={cn("h-4 w-4", sheetItem.featured && "fill-[var(--primary)]")} />
+                  {sheetItem.featured ? "Retirer de la mise en avant" : "Mettre en avant"}
+                </button>
+              ) : null}
 
               {canDelete && sheetItem ? (
                 <button
