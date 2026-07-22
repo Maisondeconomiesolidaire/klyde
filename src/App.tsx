@@ -1275,7 +1275,7 @@ function AppContent({
       style: form.style || undefined,
       location: form.location || undefined,
       sku: form.sku || undefined,
-      vinted: form.vinted,
+      vinted: Boolean(sheetItem && workflowIndex(sheetItem.status) >= workflowIndex("en_ligne")),
       outlet: form.outlet,
       quantity: asNumber(form.quantity),
       aiConfidence: form.aiConfidence,
@@ -2098,7 +2098,7 @@ function AppContent({
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="truncate text-base font-semibold">Fiche article</h2>
                   {sheetItem ? <StatusPill status={sheetItem.status} /> : null}
-                  {form.vinted ? <VintedBadge /> : null}
+                  {sheetItem && workflowIndex(sheetItem.status) >= workflowIndex("en_ligne") ? <VintedBadge /> : null}
                 </div>
                 <p className="truncate text-xs text-[var(--muted-foreground)]">
                   {form.sku ? `Réf. ${form.sku}` : "Référence en attente"}
@@ -2512,21 +2512,6 @@ function AppContent({
                 </label>
               </div>
 
-              <label className="flex items-center justify-between gap-3 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
-                <span className="grid gap-0.5">
-                  <span className="text-sm font-semibold">Mis en vente sur Vinted</span>
-                  <span className="text-xs text-[var(--muted-foreground)]">
-                    Affiche la pastille « Vinted » sur la fiche stock.
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={form.vinted}
-                  onChange={(event) => update("vinted", event.target.checked)}
-                  className="h-5 w-5 rounded border-[var(--border)] accent-[var(--primary)]"
-                />
-              </label>
-
               {sheetItem?.vintedExtensionCount ? (
                 <p className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-900">
                   Annonce Vinted prolongée {sheetItem.vintedExtensionCount} fois.
@@ -2857,16 +2842,6 @@ function AppContent({
                   </select>
                 </Field>
               </div>
-
-              <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm font-semibold">
-                <input
-                  type="checkbox"
-                  checked={form.vinted}
-                  onChange={(event) => update("vinted", event.target.checked)}
-                  className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
-                />
-                Mis en vente sur Vinted
-              </label>
 
               {canPublish ? (
                 <label className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
