@@ -15,13 +15,13 @@ import {
   List,
   Kanban,
   Loader2,
+  Menu,
   Moon,
   Package,
   Scissors,
   Search,
   ShieldCheck,
   ShoppingBag,
-  ShoppingCart,
   Sparkles,
   Star,
   Sun,
@@ -2989,61 +2989,69 @@ function MenuLatest({
 
 function BoutiqueHeader() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const [query, setQuery] = useState(() => parseSearchQuery(currentRoute()));
-
-  function submitSearch(event: FormEvent) {
-    event.preventDefault();
-    const trimmed = query.trim();
-    if (!trimmed) return;
-    goTo(`/boutique/recherche?q=${encodeURIComponent(trimmed)}`);
-  }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#1f1b18]/10 bg-[#f6eee5]/95 backdrop-blur">
-      <div className="mx-auto flex min-h-20 max-w-[96rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <button type="button" onClick={() => goTo("/boutique")} className="shrink-0">
-          <img src="/logo-light.png" alt="Klyd" className="h-12 w-auto object-contain" />
+    <header className="sticky top-0 z-30 border-b border-[#1f1b18]/10 bg-white/95 text-[#1f1b18] backdrop-blur">
+      <div className="relative flex h-20 items-center justify-between px-5 sm:h-24 sm:px-8">
+        <div className="flex items-center gap-5 sm:gap-8">
+          <button
+            type="button"
+            onClick={() => setOpenMenu((menu) => (menu ? null : shopMenus[0]?.label ?? null))}
+            className="inline-flex items-center gap-2 text-xs font-medium tracking-[0.04em] hover:opacity-60"
+            aria-label="Ouvrir le menu"
+          >
+            <Menu className="h-5 w-5" />
+            <span className="hidden sm:inline">Menu</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => goTo("/boutique/recherche")}
+            className="inline-flex items-center gap-2 text-xs font-medium tracking-[0.04em] hover:opacity-60"
+          >
+            <Search className="h-5 w-5" />
+            <span className="hidden sm:inline">Recherche</span>
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => goTo("/boutique")}
+          className="absolute left-1/2 -translate-x-1/2 text-xl font-semibold tracking-[0.18em] sm:text-3xl"
+          aria-label="Accueil Klyde"
+        >
+          KLYDE
         </button>
-        <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 items-center justify-center px-8 md:flex">
-          <div className="flex w-full max-w-xl items-center gap-3 border-b border-[#1f1b18] pb-2">
-            <Search className="h-5 w-5 shrink-0 text-[#1f1b18]/60" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Recherche dans la sélection"
-              className="w-full bg-transparent text-sm tracking-[0.04em] text-[#1f1b18] outline-none placeholder:uppercase placeholder:tracking-[0.34em] placeholder:text-[#1f1b18]/45"
-            />
-          </div>
-        </form>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-4">
           <button
             type="button"
             onClick={() => goTo("")}
-            className="hidden rounded-full border border-[#1f1b18]/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#1f1b18] sm:inline-flex"
+            className="hidden text-xs font-medium tracking-[0.04em] hover:opacity-60 lg:inline-flex"
           >
             CRM
           </button>
           <button
             type="button"
             onClick={() => goTo("/boutique/favoris")}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#1f1b18]/15 text-[#1f1b18]"
+            className="inline-flex h-10 w-10 items-center justify-center text-[#1f1b18] hover:opacity-60"
             aria-label="Voir les favoris"
           >
             <Heart className="h-5 w-5" />
+          </button>
+          <button type="button" onClick={() => goTo("/boutique/panier")} className="inline-flex h-10 w-10 items-center justify-center hover:opacity-60" aria-label="Voir le panier">
+            <ShoppingBag className="h-5 w-5" />
           </button>
         </div>
       </div>
       <nav
         onMouseLeave={() => setOpenMenu(null)}
-        className="relative border-t border-[#1f1b18]/10 bg-[#010102] px-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-white/78"
+        className="relative border-t border-[#1f1b18]/10 bg-white px-3 text-center text-[11px] font-medium tracking-[0.04em] text-[#1f1b18]/70"
       >
-        <div className="mx-auto flex max-w-[96rem] items-center justify-center gap-1 overflow-x-auto">
+        <div className="mx-auto flex max-w-[96rem] items-center gap-1 overflow-x-auto sm:justify-center">
           <button
             type="button"
             onClick={() => goTo("/boutique")}
-            className="shrink-0 px-4 py-4 hover:bg-white/10"
+            className="shrink-0 border-b-2 border-[#1f1b18] px-4 py-4"
           >
-            Nouveautés
+            Tout voir
           </button>
           {shopMenus.map((menu) => (
             <button
@@ -3053,7 +3061,7 @@ function BoutiqueHeader() {
               onClick={() =>
                 goTo(shopCategoryPath(menu.category, undefined, "gender" in menu ? menu.gender : undefined))
               }
-              className="inline-flex shrink-0 items-center gap-1 px-4 py-4 hover:bg-white/10"
+              className="inline-flex shrink-0 items-center gap-1 border-b-2 border-transparent px-4 py-4 hover:border-[#1f1b18]/35"
             >
               {menu.label}
               <ChevronDown className="h-3 w-3" />
@@ -3062,13 +3070,13 @@ function BoutiqueHeader() {
           <button
             type="button"
             onClick={() => goTo("/boutique/favoris")}
-            className="shrink-0 px-4 py-4 hover:bg-white/10"
+            className="shrink-0 border-b-2 border-transparent px-4 py-4 hover:border-[#1f1b18]/35"
           >
             Favoris
           </button>
         </div>
         {openMenu ? (
-          <div className="absolute inset-x-0 top-full z-40 border-b border-[#1f1b18]/10 bg-[#f6eee5] px-6 py-8 text-left text-[#1f1b18] shadow-[0_24px_60px_rgba(0,0,0,0.08)]">
+          <div className="absolute inset-x-0 top-full z-40 border-b border-[#1f1b18]/10 bg-white px-6 py-8 text-left text-[#1f1b18] shadow-[0_24px_60px_rgba(0,0,0,0.08)]">
             <div className="mx-auto grid max-w-[96rem] gap-8 md:grid-cols-[repeat(3,minmax(0,1fr))_300px]">
               {shopMenus
                 .find((menu) => menu.label === openMenu)
@@ -3134,7 +3142,7 @@ function BoutiqueShell({ route }: { route: ShopRoute }) {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const wishlist = useShopWishlist(() => setAuthModalOpen(true));
   return (
-    <div className="flex min-h-screen flex-col bg-[#f6eee5] text-[#1f1b18]">
+    <div className="flex min-h-screen flex-col bg-white text-[#1f1b18]">
       <BoutiqueHeader />
       <div className="flex-1">
         {route === "/boutique/panier" ? (
@@ -3174,123 +3182,38 @@ function BoutiqueCatalog({
     gender: gender || undefined,
     size: size || undefined,
   });
-  const heroItem = useQuery(api.klyde.getFeatured, {});
 
   return (
     <main>
-      <section className="grid min-h-[560px] border-b border-[#1f1b18]/10 lg:grid-cols-2">
-        <div className="flex items-center px-5 py-14 sm:px-8 lg:px-14">
-          <div className="max-w-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.34em] text-[var(--primary)]">
-              Collection privée
-            </p>
-            <h1 className="mt-6 font-serif text-5xl leading-[0.98] tracking-wide text-[#1f1b18] sm:text-7xl">
-              Catalogue Klyd
-            </h1>
-            <p className="mt-6 max-w-md text-base leading-8 text-[#1f1b18]/68">
-              Une sélection textile haut de gamme, préparée pièce par pièce, disponible uniquement
-              parmi les articles déjà mis en ligne.
-            </p>
-            <div className="mt-9 flex flex-wrap gap-3">
-              <a
-                href="#catalogue"
-                className="inline-flex h-12 items-center justify-center rounded-full bg-[var(--primary)] px-7 text-sm font-semibold uppercase tracking-[0.16em] text-white"
-              >
-                Découvrir
-              </a>
-              {heroItem ? (
-                <button
-                  type="button"
-                  onClick={() => goTo(`/boutique/article/${heroItem._id}`)}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#1f1b18]/18 px-6 text-sm font-semibold uppercase tracking-[0.16em]"
-                >
-                  Voir la pièce
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => heroItem && goTo(`/boutique/article/${heroItem._id}`)}
-          disabled={!heroItem}
-          className="group relative block h-screen min-h-[420px] overflow-hidden bg-[#010102] text-left"
-        >
-          {heroItem?.photoUrls[0] ? (
-            <img
-              src={heroItem.photoUrls[0]}
-              alt={heroItem.title}
-              className="h-full w-full object-cover opacity-90 transition duration-700 group-hover:scale-[1.03]"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-white/30">
-              <ShoppingBag className="h-24 w-24" />
-            </div>
-          )}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-6 text-white sm:p-10">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/70">Mise en avant</p>
-            <h2 className="mt-2 max-w-md text-3xl font-semibold">
-              {heroItem?.title ?? "La prochaine pièce Klyd arrive bientôt"}
-            </h2>
-            {heroItem ? (
-              <p className="mt-2 text-sm font-semibold text-white/85">{formatPrice(heroItem.price)}</p>
-            ) : null}
-          </div>
-        </button>
-      </section>
-
-      <section className="grid grid-cols-2 border-b border-[#1f1b18]/10 text-xs font-semibold uppercase tracking-[0.16em] text-[#1f1b18]/75 sm:grid-cols-4">
-        {[
-          "Produits de qualité",
-          "Pièces uniques sélectionnées",
-          "Expédition soignée 48h",
-          "Paiement 100% sécurisé",
-        ].map((label, index) => (
-          <div
-            key={label}
-            className={cn(
-              "flex items-center justify-center gap-2 px-3 py-4 text-center",
-              index < 3 && "border-[#1f1b18]/10 sm:border-r",
-              index < 2 && "border-b sm:border-b-0",
-            )}
-          >
-            <Check className="h-4 w-4 shrink-0 text-[var(--primary)]" />
-            {label}
-          </div>
-        ))}
-      </section>
-
-      <section id="catalogue" className="mx-auto max-w-[96rem] px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-8 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--primary)]">
-              Boutique
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Sélection disponible
-            </h2>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <section id="catalogue" className="bg-white">
+        <div className="flex items-center justify-between border-b border-[#1f1b18]/10 px-5 py-3 sm:px-8">
+          <p className="text-xs tracking-[0.04em] text-[#1f1b18]/60">Sélection Klyde</p>
+          <details className="group relative">
+            <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-full bg-[#010102] px-5 text-xs font-medium text-white marker:content-none">
+              <Search className="h-4 w-4" />
+              Filtres
+            </summary>
+            <div className="absolute right-0 top-12 z-20 grid w-[min(22rem,calc(100vw-2.5rem))] gap-2 border border-[#1f1b18]/10 bg-white p-3 shadow-xl sm:grid-cols-2">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-11 rounded-none border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm outline-none focus:border-[var(--primary)]"
+              className="h-11 border border-[#1f1b18]/15 bg-white px-3 text-sm outline-none focus:border-[#1f1b18] sm:col-span-2"
               placeholder="Recherche"
             />
-            <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm">
+            <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-white px-3 text-sm">
               <option value="">Catégorie</option>
               {categories.map((item) => <option key={item}>{item}</option>)}
             </select>
-            <select value={gender} onChange={(event) => setGender(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm">
+            <select value={gender} onChange={(event) => setGender(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-white px-3 text-sm">
               <option value="">Genre</option>
               {genders.map((item) => <option key={item}>{item}</option>)}
             </select>
-            <select value={size} onChange={(event) => setSize(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-[#f6eee5] px-3 text-sm">
+            <select value={size} onChange={(event) => setSize(event.target.value)} className="h-11 border border-[#1f1b18]/15 bg-white px-3 text-sm sm:col-span-2">
               <option value="">Taille</option>
               {sizes.map((item) => <option key={item}>{item}</option>)}
             </select>
-          </div>
+            </div>
+          </details>
         </div>
 
         {items === undefined ? (
@@ -3299,13 +3222,13 @@ function BoutiqueCatalog({
             Chargement de la boutique
           </div>
         ) : items.length === 0 ? (
-          <div className="border border-[#1f1b18]/10 px-6 py-16 text-center">
+          <div className="px-6 py-16 text-center">
             <p className="text-sm uppercase tracking-[0.22em] text-[#1f1b18]/50">
               Aucun article en ligne pour le moment.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 border-l border-t border-[#1f1b18]/10 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {items.map((item) => (
               <ShopProductCard key={item._id} item={item} cart={cart} wishlist={wishlist} />
             ))}
@@ -3318,14 +3241,13 @@ function BoutiqueCatalog({
 
 function ShopProductCard({
   item,
-  cart,
+  cart: _cart,
   wishlist,
 }: {
   item: ShopItem;
   cart: ReturnType<typeof useKlydeCart>;
   wishlist: ReturnType<typeof useShopWishlist>;
 }) {
-  const inCart = cart.has(item._id);
   const saved = wishlist.idSet.has(item._id);
   const [photoIndex, setPhotoIndex] = useState(0);
   const hasMultiplePhotos = item.photoUrls.length > 1;
@@ -3340,7 +3262,7 @@ function ShopProductCard({
   }
 
   return (
-    <article className="group border-b border-r border-[#1f1b18]/10 bg-white p-3 sm:p-4">
+    <article className="group border-b border-r border-[#1f1b18]/10 bg-white">
       <div
         className="relative aspect-square overflow-hidden bg-[#f7f7f5]"
         onMouseEnter={() => hasMultiplePhotos && setPhotoIndex(1)}
@@ -3362,7 +3284,7 @@ function ShopProductCard({
               alt={item.title}
               loading="lazy"
               decoding="async"
-              className="shop-photo-fade h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]"
+              className="shop-photo-fade h-full w-full object-contain transition duration-700 group-hover:scale-[1.025]"
             />
           </button>
         ) : (
@@ -3388,7 +3310,7 @@ function ShopProductCard({
             >
               <ChevronRight className="h-5 w-5" />
             </button>
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 opacity-0 transition group-hover:opacity-100">
               {item.photoUrls.slice(0, 5).map((_, index) => (
                 <span key={index} className={cn("h-1.5 rounded-full transition-all", index === photoIndex ? "w-4 bg-white" : "w-1.5 bg-white/70")} />
               ))}
@@ -3396,13 +3318,13 @@ function ShopProductCard({
           </>
         ) : null}
       </div>
-      <div className="pt-3">
+      <div className="min-h-[92px] p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <button
               type="button"
               onClick={() => goTo(`/boutique/article/${item._id}`)}
-              className="line-clamp-2 text-left text-sm font-medium tracking-[0.02em] hover:text-[var(--primary)]"
+              className="line-clamp-2 text-left text-sm font-medium tracking-[0.02em] hover:opacity-55"
             >
               {item.title}
             </button>
@@ -3410,21 +3332,8 @@ function ShopProductCard({
               {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
             </p>
           </div>
-          <p className="shrink-0 text-sm font-semibold">{formatPrice(item.price)}</p>
+          <p className="shrink-0 text-sm font-medium">{formatPrice(item.price)}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => (inCart ? goTo("/boutique/panier") : cart.add(item._id))}
-          className={cn(
-            "mt-3 inline-flex h-9 w-full items-center justify-center gap-2 border px-4 text-[11px] font-semibold uppercase tracking-[0.14em] transition",
-            inCart
-              ? "border-[#010102] bg-[#010102] text-white"
-              : "border-[#1f1b18]/18 hover:border-[var(--primary)] hover:text-[var(--primary)]",
-          )}
-        >
-          {inCart ? <Check className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
-          {inCart ? "Voir le panier" : "Ajouter au panier"}
-        </button>
       </div>
     </article>
   );
@@ -3440,7 +3349,14 @@ function SearchPage({
   wishlist: ReturnType<typeof useShopWishlist>;
 }) {
   const query = parseSearchQuery(route);
+  const [searchTerm, setSearchTerm] = useState(query);
   const items = useQuery(api.klyde.listPublic, query ? { searchText: query } : "skip");
+
+  function submitSearch(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = searchTerm.trim();
+    if (trimmed) goTo(`/boutique/recherche?q=${encodeURIComponent(trimmed)}`);
+  }
 
   return (
     <main className="mx-auto max-w-[96rem] px-4 py-10 sm:px-6 lg:px-8">
@@ -3448,11 +3364,23 @@ function SearchPage({
         Recherche
       </p>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-        Résultats pour « {query} »
+        {query ? `Résultats pour « ${query} »` : "Rechercher une pièce"}
       </h1>
 
+      <form onSubmit={submitSearch} className="mt-7 flex max-w-xl border-b border-[#1f1b18]">
+        <input
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Rechercher dans la sélection"
+          className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#1f1b18]/45"
+        />
+        <button type="submit" className="inline-flex h-12 w-12 items-center justify-center" aria-label="Lancer la recherche">
+          <Search className="h-5 w-5" />
+        </button>
+      </form>
+
       {!query ? (
-        <p className="mt-10 text-sm text-[#1f1b18]/60">Saisissez un terme de recherche.</p>
+        <p className="mt-10 text-sm text-[#1f1b18]/60">Saisissez un terme pour rechercher dans la sélection.</p>
       ) : items === undefined ? (
         <div className="mt-10 flex items-center gap-2 text-sm text-[#1f1b18]/60">
           <Loader2 className="h-4 w-4 animate-spin" />
