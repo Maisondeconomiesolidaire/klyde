@@ -9,7 +9,6 @@ import {
   Download,
   Heart,
   ImagePlus,
-  Shirt,
   Kanban,
   Loader2,
   Moon,
@@ -41,32 +40,6 @@ import { useUpload } from "./lib/useUpload";
 type KlydeStatus = "stock" | "stock_b" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
 type AppTab = "stock" | "stock_b" | "prolonges" | "suivi";
 
-/**
- * Fonctionnalités IA (analyse photos, détourage, essayage FASHN) masquées pour
- * l'instant. Passer à `true` pour les réactiver — le code reste en place.
- */
-const AI_ENABLED = false;
-
-/**
- * Mannequins pour l'essayage FASHN. Détectés automatiquement au build dans
- * `src/assets/tryon-models/` : le nom du fichier devient le nom du modèle.
- * Ajouter/retirer une image suffit — aucun code à modifier.
- */
-type TryOnModel = { name: string; src: string };
-const TRYON_MODELS: TryOnModel[] = Object.entries(
-  import.meta.glob("./assets/tryon-models/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}", {
-    eager: true,
-    query: "?url",
-    import: "default",
-  }) as Record<string, string>,
-)
-  .map(([path, src]) => {
-    const file = path.split("/").pop() ?? path;
-    const raw = file.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
-    const name = raw.replace(/\b\w/g, (c) => c.toUpperCase());
-    return { name: name || file, src };
-  })
-  .sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true }));
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
 type ShopRoute = string;
@@ -595,48 +568,6 @@ function revokeLocalPreview(url: string) {
   if (url.startsWith("blob:")) URL.revokeObjectURL(url);
 }
 
-function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Export PNG impossible."))),
-      "image/png",
-      0.95,
-    );
-  });
-}
-
-async function composeNeutralWhiteBackground(foregroundBlob: Blob, backgroundUrl = "/fond.png") {
-  const [image, background] = await Promise.all([
-    createImageBitmap(foregroundBlob),
-    fetch(backgroundUrl).then(async (response) => {
-      if (!response.ok) throw new Error("Image de fond impossible à charger.");
-      return createImageBitmap(await response.blob());
-    }),
-  ]);
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Canvas non disponible pour le détourage.");
-
-  const scale = Math.max(canvas.width / background.width, canvas.height / background.height);
-  const drawWidth = background.width * scale;
-  const drawHeight = background.height * scale;
-  context.drawImage(
-    background,
-    (canvas.width - drawWidth) / 2,
-    (canvas.height - drawHeight) / 2,
-    drawWidth,
-    drawHeight,
-  );
-  context.drawImage(image, 0, 0);
-  image.close();
-  background.close();
-
-  return canvasToPngBlob(canvas);
-}
-
 type CropRect = { x: number; y: number; w: number; h: number };
 type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
 
@@ -972,12 +903,6 @@ function AppContent({
   const [selectedCondition, setSelectedCondition] = useState("");
   const [selectedOutlet, setSelectedOutlet] = useState<"" | "klyd" | "mobifrip">("");
   const [selectedVinted, setSelectedVinted] = useState<"" | "yes" | "no">("");
-  const [extraDetails, setExtraDetails] = useState("");
-  const [customBackgroundEnabled, setCustomBackgroundEnabled] = useState(false);
-  const [customBackgroundUrl, setCustomBackgroundUrl] = useState<string | null>(null);
-  // Essayage FASHN : mannequin conservé + qualité de sortie.
-  const [tryOnModelSrc, setTryOnModelSrc] = useState<string>(TRYON_MODELS[0]?.src ?? "");
-  const [tryOnResolution, setTryOnResolution] = useState<"1k" | "2k" | "4k">("2k");
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
@@ -987,7 +912,6 @@ function AppContent({
 
   const upload = useUpload();
   const analyzePhotos = useAction(api.klyde.analyzePhotos);
-  const generateTryOn = useAction(api.klyde.generateTryOn);
   const createItem = useMutation(api.klyde.create);
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
@@ -1012,12 +936,6 @@ function AppContent({
   const canDelete = can("klyde:stock", "delete");
   const canAnalyze = can("klyde:stock", "analyze");
   const canPublish = canUpdate || can("klyde:boutique", "manage");
-
-  useEffect(() => {
-    return () => {
-      if (customBackgroundUrl) revokeLocalPreview(customBackgroundUrl);
-    };
-  }, [customBackgroundUrl]);
 
   const items = useQuery(
     api.klyde.list,
@@ -1090,18 +1008,11 @@ function AppContent({
     if (justSaved) setJustSaved(false);
   }
 
-  function resetCustomBackground() {
-    setCustomBackgroundEnabled(false);
-    setCustomBackgroundUrl(null);
-  }
-
   function openNewArticle() {
     setEditingId(null);
     setForm(initialForm);
-    setExtraDetails("");
     setShipmentNote("");
     setPublishOnCreate(false);
-    resetCustomBackground();
     setError(null);
     setDrawerOpen(true);
   }
@@ -1141,9 +1052,7 @@ function AppContent({
     fillFormFromItem(item);
     setActivePhotoIndex(0);
     setJustSaved(false);
-    setExtraDetails("");
     setShipmentNote(item.trackingNotes ?? "");
-    resetCustomBackground();
     setError(null);
     setArticleSheetOpen(true);
   }
@@ -1154,9 +1063,7 @@ function AppContent({
     setEditingPhotoIndex(null);
     setEditingId(null);
     setForm(initialForm);
-    setExtraDetails("");
     setJustSaved(false);
-    resetCustomBackground();
     setError(null);
   }
 
@@ -1166,8 +1073,6 @@ function AppContent({
     setEditingPhotoIndex(null);
     setEditingId(null);
     setForm(initialForm);
-    setExtraDetails("");
-    resetCustomBackground();
     setError(null);
   }
 
@@ -1291,72 +1196,6 @@ function AppContent({
     }
   }
 
-  function handleCustomBackgroundFile(file?: File) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Choisis une image pour le fond personnalisé.");
-      return;
-    }
-    setError(null);
-    setCustomBackgroundUrl(URL.createObjectURL(file));
-  }
-
-  async function removeBackgrounds() {
-    if (form.photos.length === 0) {
-      setError("Ajoute au moins une photo avant le détourage.");
-      return;
-    }
-
-    const currentPhotoIds = form.photos;
-    const currentPreviewUrls = form.previewUrls;
-    const backgroundUrl =
-      customBackgroundEnabled && customBackgroundUrl ? customBackgroundUrl : "/fond.png";
-
-    setError(null);
-    setBusy("background");
-    try {
-      const { removeBackground } = await import("@imgly/background-removal");
-      const processedIds: Id<"_storage">[] = [];
-      const processedUrls: string[] = [];
-
-      for (let index = 0; index < currentPreviewUrls.length; index += 1) {
-        const response = await fetch(currentPreviewUrls[index]);
-        if (!response.ok) {
-          throw new Error(`Photo ${index + 1} impossible à charger.`);
-        }
-
-        const sourceBlob = await response.blob();
-        const cutoutBlob = await removeBackground(sourceBlob, {
-          output: {
-            format: "image/png",
-            quality: 0.95,
-          },
-        });
-        const finalBlob = await composeNeutralWhiteBackground(cutoutBlob, backgroundUrl);
-        const file = new File([finalBlob], `klyde-detoure-${Date.now()}-${index + 1}.png`, {
-          type: "image/png",
-        });
-
-        processedIds.push(await upload(file));
-        processedUrls.push(URL.createObjectURL(finalBlob));
-      }
-
-      currentPreviewUrls.forEach(revokeLocalPreview);
-      setForm((current) => {
-        if (current.photos !== currentPhotoIds) return current;
-        return {
-          ...current,
-          photos: processedIds,
-          previewUrls: processedUrls,
-        };
-      });
-    } catch (err) {
-      setError(err instanceof Error ? `Détourage : ${err.message}` : "Erreur lors du détourage.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function runAnalysis() {
     if (form.photos.length === 0) {
       setError("Ajoute au moins une photo avant l'analyse.");
@@ -1367,7 +1206,6 @@ function AppContent({
     try {
       const result = await analyzePhotos({
         storageIds: form.photos,
-        extraDetails: extraDetails || undefined,
       });
       setForm((current) => ({
         ...current,
@@ -1389,54 +1227,6 @@ function AppContent({
       }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analyse impossible.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  /**
-   * Essayage FASHN : place l'article sur le mannequin choisi (conservé), puis
-   * ajoute accessoires/pièces complémentaires + contexte assortis au vêtement.
-   * L'image générée est ajoutée aux photos de l'article.
-   */
-  async function runTryOn(sourceIndex: number) {
-    const storageId = form.photos[sourceIndex];
-    if (!storageId) {
-      setError("Ajoute une photo de l'article avant de générer l'essayage.");
-      return;
-    }
-    if (!tryOnModelSrc) {
-      setError("Aucun mannequin disponible. Ajoute des modèles pour générer un essayage.");
-      return;
-    }
-    setError(null);
-    setBusy("tryon");
-    try {
-      // URL absolue du mannequin pour que FASHN puisse la récupérer.
-      const modelImageUrl = new URL(tryOnModelSrc, window.location.origin).href;
-      const result = await generateTryOn({
-        storageId,
-        modelImageUrl,
-        resolution: tryOnResolution,
-        garment: {
-          category: form.category || undefined,
-          subcategory: form.subcategory || undefined,
-          gender: form.gender || undefined,
-          style: form.style || undefined,
-          color: form.color || undefined,
-          brand: form.brand || undefined,
-        },
-      });
-      if (!result.url) throw new Error("Image générée introuvable.");
-      const generatedUrl = result.url;
-      setForm((current) => ({
-        ...current,
-        photos: [...current.photos, result.storageId],
-        previewUrls: [...current.previewUrls, generatedUrl],
-      }));
-      setActivePhotoIndex(form.photos.length);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Essayage virtuel impossible.");
     } finally {
       setBusy(null);
     }
@@ -1570,100 +1360,6 @@ function AppContent({
   const formSubcategories = formCategoryKey ? categoryTree[formCategoryKey] : [];
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
-
-  // Carte « Essayage virtuel » (FASHN Try-On Max) : mannequin conservé,
-  // accessoires + contexte générés, qualité, puis génération.
-  const tryOnCard = (sourceIndex: number) => (
-    <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
-        <Shirt className="h-3.5 w-3.5" />
-        Essayage porté
-      </div>
-
-      {TRYON_MODELS.length === 0 ? (
-        <p className="rounded-md border border-dashed border-[var(--border)] bg-[var(--background)] p-3 text-[11px] leading-4 text-[var(--muted-foreground)]">
-          Aucun mannequin configuré. Ajoutez des images dans
-          <span className="font-medium"> src/assets/tryon-models/ </span>
-          pour pouvoir générer un essayage.
-        </p>
-      ) : (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-[var(--muted-foreground)]">Mannequin</span>
-            <span className="text-xs font-semibold text-[var(--foreground)]">
-              {TRYON_MODELS.find((model) => model.src === tryOnModelSrc)?.name ?? ""}
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {TRYON_MODELS.map((model) => {
-              const selected = tryOnModelSrc === model.src;
-              return (
-                <button
-                  key={model.src}
-                  type="button"
-                  onClick={() => setTryOnModelSrc(model.src)}
-                  title={model.name}
-                  className={cn(
-                    "overflow-hidden rounded-xl border-2 text-left transition",
-                    selected
-                      ? "border-[var(--primary)]"
-                      : "border-transparent hover:border-[var(--border)]",
-                  )}
-                >
-                  <img src={model.src} alt={model.name} className="aspect-[3/4] w-full object-cover" />
-                  <span
-                    className={cn(
-                      "block truncate px-1.5 py-1 text-xs font-semibold",
-                      selected
-                        ? "bg-[var(--primary)] text-white"
-                        : "bg-[var(--background)] text-[var(--foreground)]",
-                    )}
-                  >
-                    {model.name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-[var(--muted-foreground)]">Qualité</span>
-        <div className="inline-flex rounded-full border border-[var(--border)] p-0.5">
-          {(["1k", "2k", "4k"] as const).map((res) => (
-            <button
-              key={res}
-              type="button"
-              onClick={() => setTryOnResolution(res)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-semibold uppercase transition",
-                tryOnResolution === res
-                  ? "bg-[var(--primary)] text-white"
-                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
-              )}
-            >
-              {res}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => void runTryOn(sourceIndex)}
-        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze || TRYON_MODELS.length === 0}
-        title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {busy === "tryon" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shirt className="h-4 w-4" />}
-        Générer l’essayage porté
-      </button>
-      <p className="text-[11px] leading-4 text-[var(--muted-foreground)]">
-        Place l’article sur le mannequin choisi (conservé), puis ajoute accessoires et contexte assortis. Compter ~1 à 2 min.
-      </p>
-    </div>
-  );
 
   const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => (
     <button
@@ -2555,54 +2251,21 @@ function AppContent({
                 </label>
               </div>
 
-              {AI_ENABLED ? (
-                <>
-                  {/* Retouche IA : détourage sur fond photo + analyse. */}
-                  <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Retouche IA
-                    </div>
-                    <textarea
-                      value={extraDetails}
-                      onChange={(event) => setExtraDetails(event.target.value)}
-                      className="min-h-16 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
-                      placeholder="Précision optionnelle pour l’IA"
-                    />
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => void removeBackgrounds()}
-                        disabled={Boolean(busy) || form.photos.length === 0}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
-                      >
-                        {busy === "background" ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Scissors className="h-4 w-4" />
-                        )}
-                        Détourer
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void runAnalysis()}
-                        disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
-                        title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
-                      >
-                        {busy === "analysis" ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-4 w-4" />
-                        )}
-                        Analyser
-                      </button>
-                    </div>
-                  </div>
-
-                  {tryOnCard(Math.min(activePhotoIndex, Math.max(form.previewUrls.length - 1, 0)))}
-                </>
-              ) : null}
+              <div className="grid gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Générez l’annonce à partir des photos ajoutées. Les champs restent modifiables ensuite.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void runAnalysis()}
+                  disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+                  title={canAnalyze ? undefined : "Droit de génération d’annonce requis"}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {busy === "analysis" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {busy === "analysis" ? "Génération..." : "Générer l’annonce depuis les photos"}
+                </button>
+              </div>
             </div>
 
             {/* Colonne détails : tous les champs directement modifiables. */}
@@ -2843,11 +2506,6 @@ function AppContent({
                     onChange={(event) => update("description", event.target.value)}
                   />
                 </label>
-                {AI_ENABLED ? (
-                  <Field label="Notes IA">
-                    <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
-                  </Field>
-                ) : null}
               </div>
 
               <label className="flex items-center justify-between gap-3 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
@@ -3030,87 +2688,21 @@ function AppContent({
                 </div>
               ) : null}
 
-              {AI_ENABLED ? (
-                <>
-                  <textarea
-                    value={extraDetails}
-                    onChange={(event) => setExtraDetails(event.target.value)}
-                    className="min-h-20 w-full rounded-md border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
-                    placeholder="Précision optionnelle pour l’IA"
-                  />
-
-                  <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
-                    <label className="flex items-center gap-2 text-sm font-semibold">
-                      <input
-                        type="checkbox"
-                        checked={customBackgroundEnabled}
-                        onChange={(event) => {
-                          setCustomBackgroundEnabled(event.target.checked);
-                          if (!event.target.checked) setCustomBackgroundUrl(null);
-                        }}
-                        className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]"
-                      />
-                      Ajouter un fond personnalisé
-                    </label>
-
-                    {customBackgroundEnabled ? (
-                      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_112px] sm:items-center">
-                        <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--input)] p-3 text-center">
-                          <ImagePlus className="h-5 w-5 text-[var(--muted-foreground)]" />
-                          <span className="mt-1 text-sm font-medium">
-                            {customBackgroundUrl ? "Changer le fond" : "Choisir une image de fond"}
-                          </span>
-                          <input
-                            className="sr-only"
-                            type="file"
-                            accept="image/*"
-                            onChange={(event) => handleCustomBackgroundFile(event.target.files?.[0])}
-                          />
-                        </label>
-                        <div className="aspect-square overflow-hidden rounded-md border border-[var(--border)] bg-[var(--muted)]">
-                          <img
-                            src={customBackgroundUrl ?? "/fond.png"}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => void removeBackgrounds()}
-                      disabled={Boolean(busy) || form.photos.length === 0}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-semibold text-[var(--foreground)] disabled:opacity-50"
-                    >
-                      {busy === "background" ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Scissors className="h-4 w-4" />
-                      )}
-                      Détourer sur fond photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void runAnalysis()}
-                      disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
-                      title={canAnalyze ? undefined : "Droit d’analyse IA requis"}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {busy === "analysis" ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-4 w-4" />
-                      )}
-                      Analyser les photos
-                    </button>
-                  </div>
-
-                  {tryOnCard(0)}
-                </>
-              ) : null}
+              <div className="grid gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  L’annonce est générée automatiquement à partir des photos ajoutées.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void runAnalysis()}
+                  disabled={Boolean(busy) || form.photos.length === 0 || !canAnalyze}
+                  title={canAnalyze ? undefined : "Droit de génération d’annonce requis"}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {busy === "analysis" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {busy === "analysis" ? "Génération..." : "Générer l’annonce depuis les photos"}
+                </button>
+              </div>
 
               {error ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -3260,11 +2852,6 @@ function AppContent({
                     ))}
                   </select>
                 </Field>
-                {AI_ENABLED ? (
-                  <Field label="Notes IA">
-                    <input className={inputClass()} value={form.aiNotes} onChange={(event) => update("aiNotes", event.target.value)} />
-                  </Field>
-                ) : null}
               </div>
 
               <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm font-semibold">
