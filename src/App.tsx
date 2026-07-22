@@ -923,6 +923,8 @@ function AppContent({
   const removeItem = useMutation(api.klyde.remove);
   const setFeatured = useMutation(api.klyde.setFeatured);
   const access = useQuery(api.permissions.myAccess);
+  const points = useQuery(api.points.myPoints, {}) ?? 100;
+  const ensurePoints = useMutation(api.points.ensureMine);
   const can = (pageKey: string, action: string) => {
     if (!access) return false;
     if (access.isAdmin || access.bootstrapMode) return true;
@@ -936,6 +938,8 @@ function AppContent({
   const canDelete = can("klyde:stock", "delete");
   const canAnalyze = can("klyde:stock", "analyze");
   const canPublish = canUpdate || can("klyde:boutique", "manage");
+
+  useEffect(() => { void ensurePoints({}); }, [ensurePoints]);
 
   const items = useQuery(
     api.klyde.list,
@@ -1642,8 +1646,8 @@ function AppContent({
           >
             <KlydeUserAvatar />
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
-              <span className="block truncate text-xs text-[var(--muted-foreground)]">{user?.primaryEmailAddress?.emailAddress}</span>
+              <span className="block truncate text-sm font-semibold">{user?.firstName ?? user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-bold text-[var(--primary)]">{points} pts <span title="Les points récompensent vos réservations, retours et participations utiles.">?</span></span>
             </span>
           </button>
         </div>
