@@ -569,6 +569,25 @@ export default defineSchema(
     .index("by_clerkId", ["clerkId"])
     .index("by_email", ["email"]),
 
+  /** Solde d'engagement partagé par toutes les applications. */
+  userPoints: defineTable({
+    clerkId: v.string(),
+    displayName: v.string(),
+    profileImageUrl: v.optional(v.string()),
+    points: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_clerkId", ["clerkId"])
+    .index("by_points", ["points"]),
+
+  /** Une attribution par action, afin qu'un même retour ne rapporte qu'une fois. */
+  userPointAwards: defineTable({
+    clerkId: v.string(),
+    eventKey: v.string(),
+    points: v.number(),
+    createdAt: v.number(),
+  }).index("by_clerkId_and_eventKey", ["clerkId", "eventKey"]),
+
   /** Demandes de congés / absences déposées depuis Mes Outils. */
   leaveRequests: defineTable({
     clerkId: v.string(),
@@ -623,6 +642,8 @@ export default defineSchema(
     requestId: v.id("requests"),
     requestType,
     customerName: v.string(),
+    /** Extrait du dernier message client, seulement pour `new_message`. */
+    messagePreview: v.optional(v.string()),
     read: v.boolean(),
     createdAt: v.number(),
   })
@@ -1156,6 +1177,11 @@ export default defineSchema(
     decidedAt: v.optional(v.number()),
     feedbackRequestedAt: v.optional(v.number()),
     feedbackSubmittedAt: v.optional(v.number()),
+    /** Retour libéré manuellement par l'équipe quand l'utilisateur ne peut pas remplir le formulaire. */
+    feedbackManualReturnAt: v.optional(v.number()),
+    feedbackManualReturnBy: v.optional(v.string()),
+    /** Dernière relance manuelle envoyée au demandeur pour compléter son retour. */
+    feedbackReminderSentAt: v.optional(v.number()),
     feedbackMileage: v.optional(v.number()),
     feedbackFuelRestored: v.optional(v.boolean()),
     feedbackVehicleEmpty: v.optional(v.boolean()),
