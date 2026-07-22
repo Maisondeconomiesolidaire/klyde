@@ -885,16 +885,13 @@ function Field({
   );
 }
 
-function Logo() {
+function Logo({ theme = "light" }: { theme?: "light" | "dark" }) {
   return (
-    <picture className="block">
-      <source srcSet="/logo-dark.png" media="(prefers-color-scheme: dark)" />
-      <img
-        src="/logo-light.png"
-        alt="Klyd"
-        className="h-12 w-auto object-contain"
-      />
-    </picture>
+    <img
+      src={theme === "dark" ? "/logo-dark.png" : "/logo-light.png"}
+      alt="Klyd"
+      className="h-12 w-auto object-contain"
+    />
   );
 }
 
@@ -927,9 +924,14 @@ function useKlydeTheme() {
   return { theme, toggle };
 }
 
-function AppContent() {
+function AppContent({
+  theme,
+  toggleTheme,
+}: {
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+}) {
   const { user } = useUser();
-  const { theme, toggle: toggleTheme } = useKlydeTheme();
   const [activeTab, setActiveTab] = useState<AppTab>("stock");
   const [trackingTab, setTrackingTab] = useState<TrackingTab>("process");
   const [form, setForm] = useState<FormState>(initialForm);
@@ -1821,7 +1823,7 @@ function AppContent() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
         <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6 text-center">
-          <Logo />
+          <Logo theme={theme} />
           <h2 className="mt-4 text-lg font-semibold">Accès au CRM Klyd refusé</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
             Votre compte n’a pas les droits nécessaires pour accéder au stock Klyd. Contactez un
@@ -1849,7 +1851,7 @@ function AppContent() {
       <HelpButton />
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] md:flex">
         <div className="flex items-center justify-between gap-2 p-4">
-          <Logo />
+          <Logo theme={theme} />
           <AppSwitcher current="klyde" />
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-4">
@@ -1890,7 +1892,7 @@ function AppContent() {
       <div className="min-w-0 flex-1 md:pl-56">
         <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 py-3 md:px-6">
           <div className="shrink-0 md:hidden">
-            <Logo />
+            <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
             {activeTab === "stock" ? "Stock" : "Suivi"}
@@ -1948,6 +1950,30 @@ function AppContent() {
 
         <main className="p-3 sm:p-4 md:p-6">
           {activeTab === "stock" ? (
+            <div className="mb-5 flex gap-1 border-b border-[var(--border)]">
+              {([
+                ["", "Tous"],
+                ["klyd", "Klyd"],
+                ["mobifrip", "Mobifrip"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setSelectedOutlet(value)}
+                  className={cn(
+                    "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+                    selectedOutlet === value
+                      ? "border-[var(--primary)] text-[var(--foreground)]"
+                      : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {activeTab === "stock" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -1997,15 +2023,6 @@ function AppContent() {
                           <option value="">Tous</option>
                           {filterStatuses.map((status) => (
                             <option key={status} value={status}>{statusLabel(status)}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="grid gap-1.5">
-                        <span className="text-xs font-medium text-[var(--muted-foreground)]">Enseigne</span>
-                        <select value={selectedOutlet} onChange={(e) => setSelectedOutlet(e.target.value as "" | "klyd" | "mobifrip")} className={selectClass}>
-                          <option value="">Toutes</option>
-                          {OUTLETS.map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>
                       </label>
@@ -2116,7 +2133,21 @@ function AppContent() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {wonItems.map((item) => articleCard(item, false, "demande"))}
+                {wonItems.map((item) => (
+                  <div key={item._id} className="grid gap-2">
+                    {articleCard(item, false, "demande")}
+                    {canUpdate ? (
+                      <button
+                        type="button"
+                        onClick={() => void moveItem(item._id, "envoye")}
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold text-[var(--foreground)]"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Annuler « gagné »
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             )
           ) : (
@@ -4465,6 +4496,7 @@ function KlydeProfilePage() {
 export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
   const clerk = useClerk();
+  const { theme, toggle: toggleTheme } = useKlydeTheme();
 
   useEffect(() => {
     function syncRoute() {
@@ -4512,7 +4544,7 @@ export default function App() {
       <SignedOut>
         <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
           <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6">
-            <Logo />
+            <Logo theme={theme} />
             <p className="mt-4 text-sm text-[var(--muted-foreground)]">
               Connecte-toi pour accéder à ton stock.
             </p>
@@ -4527,7 +4559,7 @@ export default function App() {
       </SignedOut>
       <SignedIn>
         <ProfileSync app="klyde" />
-        <AppContent />
+        <AppContent theme={theme} toggleTheme={toggleTheme} />
       </SignedIn>
     </>
   );
