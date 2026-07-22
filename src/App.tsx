@@ -869,6 +869,7 @@ function AppContent({
   const [selectedOutlet, setSelectedOutlet] = useState<"" | "klyd" | "mobifrip">("");
   const [selectedVinted, setSelectedVinted] = useState<"" | "yes" | "no">("");
   const [stockView, setStockView] = useState<"list" | "grid">("list");
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<Id<"klydeItems">>>(() => new Set());
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
@@ -914,6 +915,10 @@ function AppContent({
   );
 
   const allItems = items ?? [];
+  const selectedItems = useMemo(
+    () => allItems.filter((item) => selectedItemIds.has(item._id)),
+    [allItems, selectedItemIds],
+  );
   const visibleItems = useMemo(
     () =>
       allItems.filter((item) => {
@@ -973,6 +978,10 @@ function AppContent({
     () => allItems.find((item) => item._id === editingId) ?? null,
     [allItems, editingId],
   );
+
+  useEffect(() => {
+    setSelectedItemIds(new Set());
+  }, [activeTab]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -1127,6 +1136,51 @@ function AppContent({
       await setBoutiquePublished({ id: item._id, published: !item.publishedOnBoutique });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Publication Boutique impossible.");
+    }
+  }
+
+  function toggleItemSelection(id: Id<"klydeItems">) {
+    setSelectedItemIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleVisibleItemSelection() {
+    setSelectedItemIds((current) => {
+      const next = new Set(current);
+      const allVisibleSelected = tabItems.length > 0 && tabItems.every((item) => next.has(item._id));
+      for (const item of tabItems) {
+        if (allVisibleSelected) next.delete(item._id);
+        else next.add(item._id);
+      }
+      return next;
+    });
+  }
+
+  async function publishSelectedOnBoutique() {
+    const itemsToPublish = selectedItems.filter((item) => !item.publishedOnBoutique);
+    const itemsWithoutPrice = itemsToPublish.filter((item) => item.price == null);
+    if (itemsWithoutPrice.length > 0) {
+      setError(`${itemsWithoutPrice.length} article${itemsWithoutPrice.length > 1 ? "s n'ont" : " n'a"} pas de prix : renseignez-les avant la publication Boutique.`);
+      return;
+    }
+    if (itemsToPublish.length === 0) return;
+    setBusy("bulk-boutique-publish");
+    setError(null);
+    try {
+      await Promise.all(itemsToPublish.map((item) => setBoutiquePublished({ id: item._id, published: true })));
+      setSelectedItemIds((current) => {
+        const next = new Set(current);
+        itemsToPublish.forEach((item) => next.delete(item._id));
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publication Boutique des articles sélectionnés impossible.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -1452,8 +1506,22 @@ function AppContent({
         setDraggedId(item._id);
         event.dataTransfer.setData("text/plain", item._id);
       }}
-      className="cursor-pointer overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]"
+      className="relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]"
     >
+      {canPublish && activeTab !== "suivi" && activeTab !== "boutique" ? (
+        <label
+          className="absolute left-3 top-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selectedItemIds.has(item._id)}
+            onChange={() => toggleItemSelection(item._id)}
+            className="h-4 w-4 accent-[var(--primary)]"
+            aria-label={`Sélectionner ${item.title}`}
+          />
+        </label>
+      ) : null}
       <ArticleThumb item={item} />
       <div className="grid gap-2 p-3">
         <div className="flex items-start justify-between gap-2">
@@ -1493,6 +1561,17 @@ function AppContent({
       onClick={() => openDetail(item, "article")}
       className="cursor-pointer bg-[var(--background)] hover:bg-[var(--card)]"
     >
+      {canPublish ? (
+        <td className="w-12 px-4 py-3" onClick={(event) => event.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selectedItemIds.has(item._id)}
+            onChange={() => toggleItemSelection(item._id)}
+            className="h-4 w-4 accent-[var(--primary)]"
+            aria-label={`Sélectionner ${item.title}`}
+          />
+        </td>
+      ) : null}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--muted)]">
@@ -1874,27 +1953,64 @@ function AppContent({
                 Aucun article.
               </div>
             ) : (
-              stockView === "grid" ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-                  {tabItems.map((item) => articleCard(item))}
-                </div>
-              ) : <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
-                <table className="min-w-[700px] w-full text-sm">
-                  <thead className="bg-[var(--card)] text-[var(--muted-foreground)]">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium">Article</th>
-                      <th className="px-4 py-3 text-left font-medium">Référence</th>
-                      <th className="px-4 py-3 text-left font-medium">Catégorie</th>
-                      <th className="px-4 py-3 text-left font-medium">Emplacement</th>
-                      <th className="px-4 py-3 text-left font-medium">Prix</th>
-                      <th className="px-4 py-3 text-left font-medium">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border)]">
-                    {tabItems.map((item) => articleRow(item))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                {canPublish && selectedItems.length > 0 ? (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/25 bg-[var(--primary)]/5 px-4 py-3">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {selectedItems.length} article{selectedItems.length > 1 ? "s" : ""} sélectionné{selectedItems.length > 1 ? "s" : ""}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedItemIds(new Set())}
+                        className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                      >
+                        Désélectionner
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void publishSelectedOnBoutique()}
+                        disabled={busy === "bulk-boutique-publish" || selectedItems.every((item) => item.publishedOnBoutique)}
+                        className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {busy === "bulk-boutique-publish" ? "Publication…" : "Mettre en ligne sur la boutique"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {stockView === "grid" ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                    {tabItems.map((item) => articleCard(item))}
+                  </div>
+                ) : <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+                  <table className="min-w-[700px] w-full text-sm">
+                    <thead className="bg-[var(--card)] text-[var(--muted-foreground)]">
+                      <tr>
+                        {canPublish ? (
+                          <th className="w-12 px-4 py-3 text-left font-medium">
+                            <input
+                              type="checkbox"
+                              checked={tabItems.length > 0 && tabItems.every((item) => selectedItemIds.has(item._id))}
+                              onChange={toggleVisibleItemSelection}
+                              className="h-4 w-4 accent-[var(--primary)]"
+                              aria-label="Sélectionner tous les articles visibles"
+                            />
+                          </th>
+                        ) : null}
+                        <th className="px-4 py-3 text-left font-medium">Article</th>
+                        <th className="px-4 py-3 text-left font-medium">Référence</th>
+                        <th className="px-4 py-3 text-left font-medium">Catégorie</th>
+                        <th className="px-4 py-3 text-left font-medium">Emplacement</th>
+                        <th className="px-4 py-3 text-left font-medium">Prix</th>
+                        <th className="px-4 py-3 text-left font-medium">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border)]">
+                      {tabItems.map((item) => articleRow(item))}
+                    </tbody>
+                  </table>
+                </div>}
+              </>
             )
           ) : trackingTab === "gagne" ? (
             wonItems.length === 0 ? (
@@ -3274,14 +3390,22 @@ function BoutiqueCatalog({
     gender: gender || undefined,
     size: size || undefined,
   });
+  const heroCovers = storefront === undefined
+    ? null
+    : ([
+        { label: "Nouveautés homme", gender: "Homme", image: storefront.hommeUrl ?? SHOP_EDITORIAL_COVERS.homme, position: "object-[center_28%]" },
+        { label: "Nouveautés femme", gender: "Femme", image: storefront.femmeUrl ?? SHOP_EDITORIAL_COVERS.femme, position: "object-[center_35%]" },
+      ] as const);
 
   return (
     <main>
       <section className="grid h-[calc(100svh-8.5rem)] min-h-[36rem] overflow-hidden bg-black text-white md:grid-cols-2 sm:h-[calc(100svh-9.5rem)]">
-        {([
-          { label: "Nouveautés homme", gender: "Homme", image: storefront?.hommeUrl ?? SHOP_EDITORIAL_COVERS.homme, position: "object-[center_28%]" },
-          { label: "Nouveautés femme", gender: "Femme", image: storefront?.femmeUrl ?? SHOP_EDITORIAL_COVERS.femme, position: "object-[center_35%]" },
-        ] as const).map((cover) => (
+        {heroCovers === null ? (
+          <>
+            <div className="animate-pulse bg-white/10" />
+            <div className="animate-pulse border-t border-white/10 bg-white/10 md:border-l md:border-t-0" />
+          </>
+        ) : heroCovers.map((cover) => (
           <button
             key={cover.gender}
             type="button"
@@ -3289,6 +3413,7 @@ function BoutiqueCatalog({
             className="group relative min-h-0 overflow-hidden text-left"
           >
             <img
+              key={cover.image}
               src={cover.image}
               alt={cover.label}
               className={cn("h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]", cover.position)}
