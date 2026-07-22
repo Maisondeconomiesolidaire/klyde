@@ -9,6 +9,8 @@ import {
   Download,
   Heart,
   ImagePlus,
+  LayoutGrid,
+  List,
   Kanban,
   Loader2,
   Moon,
@@ -903,6 +905,7 @@ function AppContent({
   const [selectedCondition, setSelectedCondition] = useState("");
   const [selectedOutlet, setSelectedOutlet] = useState<"" | "klyd" | "mobifrip">("");
   const [selectedVinted, setSelectedVinted] = useState<"" | "yes" | "no">("");
+  const [stockView, setStockView] = useState<"list" | "grid">("list");
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
@@ -1253,6 +1256,36 @@ function AppContent({
       URL.revokeObjectURL(objectUrl);
     } catch {
       setError("Téléchargement de l'image impossible.");
+    }
+  }
+
+  async function downloadPhotoPack() {
+    if (form.previewUrls.length === 0) return;
+    setError(null);
+    setBusy("photo-pack");
+    try {
+      const { default: JSZip } = await import("jszip");
+      const archive = new JSZip();
+      await Promise.all(form.previewUrls.map(async (url, index) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Photo ${index + 1} inaccessible.`);
+        const blob = await response.blob();
+        const extension = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+        archive.file(`${String(index + 1).padStart(2, "0")}-${form.sku || "klyde-article"}.${extension}`, blob);
+      }));
+      const blob = await archive.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${form.sku || form.title || "klyde-article"}-photos.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Téléchargement du pack impossible.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -1716,7 +1749,7 @@ function AppContent({
 
         <main className="p-3 sm:p-4 md:p-6">
           {activeTab !== "suivi" ? (
-            <div className="mb-5 flex gap-1 border-b border-[var(--border)]">
+            <div className="mb-5 flex items-center justify-between gap-3 border-b border-[var(--border)]">
               {([
                 ["", "Tous"],
                 ["klyd", "Klyd"],
@@ -1736,6 +1769,10 @@ function AppContent({
                   {label}
                 </button>
               ))}
+              <div className="mb-2 ml-auto inline-flex rounded-lg border border-[var(--border)] p-1">
+                <button type="button" onClick={() => setStockView("list")} className={cn("rounded-md p-2", stockView === "list" && "bg-[var(--muted)]")} aria-label="Vue liste" title="Vue liste"><List className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setStockView("grid")} className={cn("rounded-md p-2", stockView === "grid" && "bg-[var(--muted)]")} aria-label="Vue grille" title="Vue grille"><LayoutGrid className="h-4 w-4" /></button>
+              </div>
             </div>
           ) : null}
 
@@ -1874,7 +1911,11 @@ function AppContent({
                 Aucun article.
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+              stockView === "grid" ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                  {tabItems.map((item) => articleCard(item))}
+                </div>
+              ) : <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
                 <table className="min-w-[700px] w-full text-sm">
                   <thead className="bg-[var(--card)] text-[var(--muted-foreground)]">
                     <tr>
@@ -2167,18 +2208,14 @@ function AppContent({
                   </div>
                 )}
                 {form.previewUrls.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const idx = Math.min(activePhotoIndex, form.previewUrls.length - 1);
-                      void downloadImage(form.previewUrls[idx], idx);
-                    }}
-                    className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black/75"
-                    aria-label="Télécharger la photo"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Télécharger
-                  </button>
+                  <div className="absolute right-3 top-3 flex gap-2">
+                    <button type="button" onClick={() => void downloadPhotoPack()} disabled={busy === "photo-pack"} className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-60" aria-label="Télécharger le pack de photos">
+                      {busy === "photo-pack" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Pack photos
+                    </button>
+                    <button type="button" onClick={() => { const idx = Math.min(activePhotoIndex, form.previewUrls.length - 1); void downloadImage(form.previewUrls[idx], idx); }} className="inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black/75" aria-label="Télécharger la photo">
+                      <Download className="h-3.5 w-3.5" /> Photo
+                    </button>
+                  </div>
                 ) : null}
               </div>
 
