@@ -2140,6 +2140,9 @@ function AppContent({
           <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start">
             {/* Colonne photos : grande image + miniatures, style boutique. */}
             <div className="grid gap-3 lg:sticky lg:top-24">
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
+                {form.title || "Nouvel article"}
+              </h1>
               <div className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--muted)]">
                 {form.previewUrls.length > 0 ? (
                   <button
