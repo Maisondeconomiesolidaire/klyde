@@ -1705,34 +1705,6 @@ function AppContent({
 
         <main className="p-3 sm:p-4 md:p-6">
           {activeTab !== "suivi" ? (
-            <div className="mb-5 flex items-center justify-between gap-3 border-b border-[var(--border)]">
-              {([
-                ["", "Tous"],
-                ["klyd", "Klyd"],
-                ["mobifrip", "Mobifrip"],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setSelectedOutlet(value)}
-                  className={cn(
-                    "-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
-                    selectedOutlet === value
-                      ? "border-[var(--primary)] text-[var(--foreground)]"
-                      : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-              <div className="mb-2 ml-auto inline-flex rounded-lg border border-[var(--border)] p-1">
-                <button type="button" onClick={() => setStockView("list")} className={cn("rounded-md p-2", stockView === "list" && "bg-[var(--muted)]")} aria-label="Vue liste" title="Vue liste"><List className="h-4 w-4" /></button>
-                <button type="button" onClick={() => setStockView("grid")} className={cn("rounded-md p-2", stockView === "grid" && "bg-[var(--muted)]")} aria-label="Vue grille" title="Vue grille"><LayoutGrid className="h-4 w-4" /></button>
-              </div>
-            </div>
-          ) : null}
-
-          {activeTab !== "suivi" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -1824,6 +1796,21 @@ function AppContent({
                     </>
                   );
                 })()}
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+                <div className="flex gap-1">
+                  {([
+                    ["", "Tous"],
+                    ["klyd", "Klyd"],
+                    ["mobifrip", "Mobifrip"],
+                  ] as const).map(([value, label]) => (
+                    <button key={label} type="button" onClick={() => setSelectedOutlet(value)} className={cn("rounded-lg px-3 py-2 text-sm font-semibold transition-colors", selectedOutlet === value ? "bg-[var(--primary)] text-white" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]")}>{label}</button>
+                  ))}
+                </div>
+                <div className="inline-flex rounded-lg border border-[var(--border)] p-1">
+                  <button type="button" onClick={() => setStockView("list")} className={cn("rounded-md p-2", stockView === "list" && "bg-[var(--muted)]")} aria-label="Vue liste" title="Vue liste"><List className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setStockView("grid")} className={cn("rounded-md p-2", stockView === "grid" && "bg-[var(--muted)]")} aria-label="Vue grille" title="Vue grille"><LayoutGrid className="h-4 w-4" /></button>
+                </div>
               </div>
             </div>
           ) : (
