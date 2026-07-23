@@ -22,6 +22,7 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Sun,
@@ -535,6 +536,30 @@ function revokeLocalPreview(url: string) {
 
 type CropRect = { x: number; y: number; w: number; h: number };
 type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
+type PhotoAdjustments = {
+  rotation: number;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  warmth: number;
+};
+
+const DEFAULT_PHOTO_ADJUSTMENTS: PhotoAdjustments = {
+  rotation: 0,
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  warmth: 0,
+};
+
+const PHOTO_FILTERS: Array<{ label: string; values: PhotoAdjustments }> = [
+  { label: "Original", values: DEFAULT_PHOTO_ADJUSTMENTS },
+  { label: "Pop", values: { rotation: 0, brightness: 104, contrast: 116, saturation: 122, warmth: 4 } },
+  { label: "Chaud", values: { rotation: 0, brightness: 104, contrast: 104, saturation: 106, warmth: 28 } },
+  { label: "Froid", values: { rotation: 0, brightness: 102, contrast: 108, saturation: 92, warmth: -26 } },
+  { label: "Vintage", values: { rotation: 0, brightness: 105, contrast: 90, saturation: 72, warmth: 22 } },
+  { label: "N&B", values: { rotation: 0, brightness: 104, contrast: 112, saturation: 0, warmth: 0 } },
+];
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -551,10 +576,11 @@ function PhotoEditor({
   onReplace: (newId: Id<"_storage">, newUrl: string) => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<"view" | "crop">("view");
+  const [mode, setMode] = useState<"view" | "crop" | "adjust">("view");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [crop, setCrop] = useState<CropRect>({ x: 0.08, y: 0.08, w: 0.84, h: 0.84 });
+  const [adjustments, setAdjustments] = useState<PhotoAdjustments>(DEFAULT_PHOTO_ADJUSTMENTS);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ type: CropHandle; startX: number; startY: number; start: CropRect } | null>(
     null,
@@ -596,6 +622,23 @@ function PhotoEditor({
     dragRef.current = null;
   }
 
+  function updateAdjustment<Key extends keyof PhotoAdjustments>(key: Key, value: number) {
+    setAdjustments((current) => ({ ...current, [key]: value }));
+  }
+
+  function baseFilter() {
+    return `brightness(${adjustments.brightness}%) contrast(${adjustments.contrast}%) saturate(${adjustments.saturation}%)`;
+  }
+
+  function previewFilter() {
+    const warmthPreview = adjustments.warmth > 0
+      ? ` sepia(${adjustments.warmth / 100})`
+      : adjustments.warmth < 0
+        ? ` hue-rotate(${adjustments.warmth}deg)`
+        : "";
+    return `${baseFilter()}${warmthPreview}`;
+  }
+
   async function applyCrop() {
     setBusy(true);
     setError(null);
@@ -630,6 +673,50 @@ function PhotoEditor({
     }
   }
 
+  async function applyAdjustments() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Image introuvable.");
+      const bitmap = await createImageBitmap(await response.blob());
+      const angle = (adjustments.rotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(angle));
+      const sin = Math.abs(Math.sin(angle));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.ceil(bitmap.width * cos + bitmap.height * sin));
+      canvas.height = Math.max(1, Math.ceil(bitmap.width * sin + bitmap.height * cos));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas indisponible.");
+      context.save();
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate(angle);
+      context.filter = baseFilter();
+      context.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+      context.restore();
+      if (adjustments.warmth !== 0) {
+        context.globalCompositeOperation = "soft-light";
+        context.fillStyle = adjustments.warmth > 0
+          ? `rgba(255, 126, 32, ${Math.abs(adjustments.warmth) / 150})`
+          : `rgba(34, 126, 255, ${Math.abs(adjustments.warmth) / 150})`;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      bitmap.close?.();
+      const output = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/webp", 0.92),
+      );
+      if (!output) throw new Error("Export impossible.");
+      const file = new File([output], `klyde-photo-${Date.now()}.webp`, { type: "image/webp" });
+      const id = await upload(file);
+      onReplace(id, URL.createObjectURL(output));
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Modification impossible.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleReplaceFile(files: FileList | null) {
     const file = Array.from(files ?? []).find((item) => item.type.startsWith("image/"));
     if (!file) return;
@@ -650,7 +737,7 @@ function PhotoEditor({
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/80 p-4 sm:p-8">
       <div className="flex items-center justify-between text-white">
         <h3 className="text-sm font-semibold uppercase tracking-[0.16em]">
-          {mode === "crop" ? "Rogner l’image" : "Modifier l’image"}
+          {mode === "crop" ? "Rogner l’image" : mode === "adjust" ? "Ajuster l’image" : "Modifier l’image"}
         </h3>
         <button
           type="button"
@@ -668,7 +755,8 @@ function PhotoEditor({
             src={url}
             alt=""
             draggable={false}
-            className="max-h-[68vh] max-w-full object-contain"
+            className="max-h-[62vh] max-w-full object-contain transition"
+            style={mode === "adjust" ? { filter: previewFilter(), transform: `rotate(${adjustments.rotation}deg)` } : undefined}
           />
           {mode === "crop" ? (
             <div
@@ -713,6 +801,55 @@ function PhotoEditor({
         </div>
       ) : null}
 
+      {mode === "adjust" ? (
+        <div className="mx-auto mb-4 grid w-full max-w-2xl gap-4 rounded-2xl bg-white/10 p-4 text-white backdrop-blur">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {PHOTO_FILTERS.map((filter) => (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() => setAdjustments({ ...filter.values, rotation: adjustments.rotation })}
+                disabled={busy}
+                className="shrink-0 rounded-full border border-white/25 px-3 py-1.5 text-xs font-medium transition hover:bg-white/15 disabled:opacity-50"
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              ["Orientation", "rotation", -180, 180, 0.1, `${adjustments.rotation.toFixed(1)}°`],
+              ["Luminosité", "brightness", 0, 200, 1, `${adjustments.brightness}%`],
+              ["Contraste", "contrast", 0, 200, 1, `${adjustments.contrast}%`],
+              ["Saturation", "saturation", 0, 200, 1, `${adjustments.saturation}%`],
+              ["Chaleur", "warmth", -50, 50, 1, adjustments.warmth > 0 ? `+${adjustments.warmth}` : String(adjustments.warmth)],
+            ] as const).map(([label, key, min, max, step, value]) => (
+              <label key={key} className={cn("grid gap-1.5 text-xs", key === "rotation" && "sm:col-span-2")}>
+                <span className="flex items-center justify-between font-medium"><span>{label}</span><span className="text-white/65">{value}</span></span>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={adjustments[key]}
+                  onChange={(event) => updateAdjustment(key, Number(event.target.value))}
+                  disabled={busy}
+                  className="h-2 w-full cursor-pointer accent-[var(--primary)] disabled:cursor-not-allowed"
+                />
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS)}
+            disabled={busy}
+            className="justify-self-start text-xs font-semibold text-white/80 underline underline-offset-4 hover:text-white disabled:opacity-50"
+          >
+            Réinitialiser les réglages
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-center gap-3">
         <input
           ref={replaceInputRef}
@@ -734,6 +871,15 @@ function PhotoEditor({
             </button>
             <button
               type="button"
+              onClick={() => setMode("adjust")}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-white px-5 text-sm font-semibold text-[#1f1b18] disabled:opacity-50"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Ajuster
+            </button>
+            <button
+              type="button"
               onClick={() => replaceInputRef.current?.click()}
               disabled={busy}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-white/40 px-5 text-sm font-semibold text-white disabled:opacity-50"
@@ -742,7 +888,7 @@ function PhotoEditor({
               Remplacer
             </button>
           </>
-        ) : (
+        ) : mode === "crop" ? (
           <>
             <button
               type="button"
@@ -752,6 +898,26 @@ function PhotoEditor({
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Appliquer le rognage
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("view")}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center rounded-md border border-white/40 px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void applyAdjustments()}
+              disabled={busy}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Appliquer les réglages
             </button>
             <button
               type="button"
@@ -2269,7 +2435,7 @@ function AppContent({
                     type="button"
                     onClick={() => setEditingPhotoIndex(Math.min(activePhotoIndex, form.previewUrls.length - 1))}
                     className="group block aspect-square w-full"
-                    aria-label="Rogner la photo"
+                    aria-label="Modifier la photo"
                   >
                     <img
                       src={form.previewUrls[Math.min(activePhotoIndex, form.previewUrls.length - 1)]}
@@ -2277,8 +2443,8 @@ function AppContent({
                       className="h-full w-full object-cover"
                     />
                     <span className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white opacity-0 transition group-hover:opacity-100">
-                      <Scissors className="h-3.5 w-3.5" />
-                      Rogner
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      Modifier
                     </span>
                   </button>
                 ) : (
@@ -2759,8 +2925,8 @@ function AppContent({
                           className="aspect-square w-full object-cover transition group-hover:opacity-90"
                         />
                         <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/55 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white opacity-0 transition group-hover:opacity-100">
-                          <Scissors className="h-3 w-3" />
-                          Rogner
+                          <SlidersHorizontal className="h-3 w-3" />
+                          Modifier
                         </span>
                       </button>
                       <button
