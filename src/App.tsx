@@ -3874,11 +3874,28 @@ function ProductDetailPage({
   const itemId = parseShopArticleId(route);
   const item = useQuery(api.klyde.getPublic, { id: itemId as Id<"klydeItems"> });
   const [selectedPhoto, setSelectedPhoto] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const galleryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedPhoto(0);
+    setLightboxOpen(false);
   }, [itemId]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setLightboxOpen(false);
+      if (event.key === "ArrowLeft") {
+        setSelectedPhoto((index) => Math.max(0, index - 1));
+      }
+      if (event.key === "ArrowRight") {
+        setSelectedPhoto((index) => Math.min(Math.max((item?.photoUrls.length ?? 1) - 1, 0), index + 1));
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [item?.photoUrls.length, lightboxOpen]);
 
   if (item === undefined) {
     return (
@@ -3953,7 +3970,18 @@ function ProductDetailPage({
           <div ref={galleryRef} className="klyde-gallery-scroll flex h-[72svh] snap-y snap-mandatory flex-col overflow-y-auto lg:sticky lg:top-[9.5rem] lg:h-[calc(100svh-9.5rem)]">
             {item.photoUrls.length > 0 ? item.photoUrls.map((url, index) => (
               <div key={url} className="flex h-full min-h-full shrink-0 snap-start items-center justify-center p-6 sm:p-10">
-                <img src={url} alt={`${item.title} — vue ${index + 1}`} loading={index === 0 ? "eager" : "lazy"} decoding="async" className="h-full w-full object-contain" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectPhoto(index);
+                    setLightboxOpen(true);
+                  }}
+                  className="group relative h-full w-full cursor-zoom-in"
+                  aria-label={`Agrandir la photo ${index + 1}`}
+                >
+                  <img src={url} alt={`${item.title} — vue ${index + 1}`} loading={index === 0 ? "eager" : "lazy"} decoding="async" className="h-full w-full object-contain" />
+                  <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/65 px-3 py-1.5 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">Agrandir</span>
+                </button>
               </div>
             )) : (
               <div className="flex h-full min-h-full items-center justify-center text-[#1f1b18]/25"><Package className="h-16 w-16" /></div>
@@ -3983,6 +4011,71 @@ function ProductDetailPage({
           </div>
         </aside>
       </section>
+      {lightboxOpen && item.photoUrls.length > 0 ? (
+        <div
+          role="presentation"
+          onClick={() => setLightboxOpen(false)}
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4 sm:p-8"
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Galerie photos : ${item.title}`}
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex h-full w-full max-w-6xl flex-col"
+          >
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(false)}
+              className="absolute right-0 top-0 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+              aria-label="Fermer la galerie"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="relative flex min-h-0 flex-1 items-center justify-center px-8 sm:px-16">
+              <img
+                src={item.photoUrls[selectedPhoto]}
+                alt={`${item.title} — vue ${selectedPhoto + 1}`}
+                className="h-full max-h-[calc(100svh-11rem)] w-full object-contain"
+              />
+              {item.photoUrls.length > 1 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPhoto((index) => (index - 1 + item.photoUrls.length) % item.photoUrls.length)}
+                    className="absolute left-0 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                    aria-label="Photo précédente"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPhoto((index) => (index + 1) % item.photoUrls.length)}
+                    className="absolute right-0 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                    aria-label="Photo suivante"
+                  >
+                    <ChevronRight className="h-6 w-6" />
+                  </button>
+                </>
+              ) : null}
+            </div>
+            <div className="mt-4 flex items-center justify-center gap-2 overflow-x-auto pb-1">
+              {item.photoUrls.map((url, index) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setSelectedPhoto(index)}
+                  className={cn("h-16 w-12 shrink-0 overflow-hidden border-2 transition", index === selectedPhoto ? "border-white" : "border-transparent opacity-60 hover:opacity-100")}
+                  aria-label={`Afficher la photo ${index + 1}`}
+                >
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-center text-xs font-medium text-white/70">{selectedPhoto + 1} / {item.photoUrls.length}</p>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
