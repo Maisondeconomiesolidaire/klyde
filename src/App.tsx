@@ -1683,6 +1683,7 @@ function AppContent({
             type="checkbox"
             checked={selectedItemIds.has(item._id)}
             onChange={() => toggleItemSelection(item._id)}
+            onKeyDown={(event) => event.stopPropagation()}
             className="h-4 w-4 accent-[var(--primary)]"
             aria-label={`Sélectionner ${item.title}`}
           />
@@ -1733,6 +1734,7 @@ function AppContent({
             type="checkbox"
             checked={selectedItemIds.has(item._id)}
             onChange={() => toggleItemSelection(item._id)}
+            onKeyDown={(event) => event.stopPropagation()}
             className="h-4 w-4 accent-[var(--primary)]"
             aria-label={`Sélectionner ${item.title}`}
           />
@@ -1773,6 +1775,60 @@ function AppContent({
         </div>
       </td>
     </tr>
+  );
+
+  const mobileArticleRow = (item: ListedItem) => (
+    <article
+      key={item._id}
+      role="button"
+      tabIndex={0}
+      onClick={() => openArticleSheet(item)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openArticleSheet(item);
+        }
+      }}
+      className="relative flex min-h-24 cursor-pointer items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 text-left transition hover:bg-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/50"
+      aria-label={`Ouvrir la fiche de ${item.title}`}
+    >
+      {canPublish ? (
+        <label
+          className="z-10 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--background)]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selectedItemIds.has(item._id)}
+            onChange={() => toggleItemSelection(item._id)}
+            onKeyDown={(event) => event.stopPropagation()}
+            className="h-4 w-4 accent-[var(--primary)]"
+            aria-label={`Sélectionner ${item.title}`}
+          />
+        </label>
+      ) : null}
+      <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--muted)]">
+        {item.photoUrls[0] ? (
+          <img src={item.photoUrls[0]} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <Package className="h-5 w-5 text-[var(--muted-foreground)]" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-start justify-between gap-2">
+          <span className="line-clamp-2 text-sm font-semibold">{item.title}</span>
+          <span className="shrink-0 text-sm font-semibold">{item.price != null ? `${item.price.toFixed(2)} €` : "—"}</span>
+        </span>
+        <span className="mt-1 block truncate text-xs text-[var(--muted-foreground)]">
+          {[item.brand, item.size, item.condition].filter(Boolean).join(" · ") || "—"}
+        </span>
+        <span className="mt-2 flex items-center gap-1.5">
+          <StatusPill status={item.status} />
+          <VintedFlag on={Boolean(item.vinted)} />
+        </span>
+      </span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-[var(--muted-foreground)]" />
+    </article>
   );
 
   const kanbanCard = (item: ListedItem) => (
@@ -2148,7 +2204,11 @@ function AppContent({
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
                     {tabItems.map((item) => articleCard(item))}
                   </div>
-                ) : <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+                ) : <>
+                  <div className="grid gap-2 md:hidden">
+                    {tabItems.map((item) => mobileArticleRow(item))}
+                  </div>
+                  <div className="hidden overflow-x-auto rounded-2xl border border-[var(--border)] md:block">
                   <table className="min-w-[700px] w-full text-sm">
                     <thead className="bg-[var(--card)] text-[var(--muted-foreground)]">
                       <tr>
@@ -2175,7 +2235,8 @@ function AppContent({
                       {tabItems.map((item) => articleRow(item))}
                     </tbody>
                   </table>
-                </div>}
+                  </div>
+                </>}
               </>
             )
           ) : trackingTab === "gagne" ? (
