@@ -1134,6 +1134,10 @@ function AppContent({
     ),
     [tabItems],
   );
+  const availableStockValue = useMemo(
+    () => tabItems.reduce((total, item) => total + (item.price ?? 0) * item.quantity, 0),
+    [tabItems],
+  );
   const locationOptions = useMemo(
     () =>
       Array.from(new Set(allItems.map((item) => item.location ?? "").filter(Boolean))).sort((a, b) =>
@@ -2243,9 +2247,15 @@ function AppContent({
             ) : (
               <>
                 {activeTab === "stock" ? (
-                  <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
-                    <span className="text-sm font-semibold">Poids estimé disponible</span>
-                    <span className="text-lg font-black text-[var(--primary)]">{availableWeightKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg</span>
+                  <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
+                      <span className="text-sm font-semibold">Poids estimé disponible</span>
+                      <span className="text-lg font-black text-[var(--primary)]">{availableWeightKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
+                      <span className="text-sm font-semibold">Valeur du stock</span>
+                      <span className="text-lg font-black text-[var(--primary)]">{availableStockValue.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</span>
+                    </div>
                   </div>
                 ) : null}
                 {canPublish && selectedItems.length > 0 ? (
