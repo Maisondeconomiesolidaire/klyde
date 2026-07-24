@@ -41,6 +41,7 @@ import { AppSwitcher } from "./components/AppSwitcher";
 import { HelpButton } from "./components/HelpButton";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
+import { KLYDE_GENDERS, klydeAverageWeightKg, klydeCategories, klydeSubcategories, klydeSubsubcategories } from "../convex/klydeTaxonomy";
 
 type KlydeStatus = "stock" | "stock_b" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
 type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique";
@@ -56,6 +57,8 @@ type FormState = {
   description: string;
   category: string;
   subcategory: string;
+  subsubcategory: string;
+  weightKg: string;
   brand: string;
   size: string;
   condition: string;
@@ -102,6 +105,8 @@ const initialForm: FormState = {
   description: "",
   category: "Vêtements",
   subcategory: "",
+  subsubcategory: "",
+  weightKg: "",
   brand: "",
   size: "",
   condition: "Bon état",
@@ -186,7 +191,7 @@ const categoryTree = {
 } as const;
 
 const categories = Object.keys(categoryTree) as Array<keyof typeof categoryTree>;
-const genders = ["Femme", "Homme", "Unisexe"];
+const genders = [...KLYDE_GENDERS];
 const sizes = [
   "XXS",
   "XS",
@@ -938,15 +943,18 @@ function Field({
   label,
   children,
   wide,
+  hint,
 }: {
   label: string;
   children: React.ReactNode;
   wide?: boolean;
+  hint?: string;
 }) {
   return (
     <label className={cn("grid gap-1.5", wide && "md:col-span-2")}>
       <span className="text-xs font-medium text-[var(--muted-foreground)]">{label}</span>
       {children}
+      {hint ? <span className="text-[11px] leading-4 text-[var(--muted-foreground)]">{hint}</span> : null}
     </label>
   );
 }
@@ -1119,6 +1127,13 @@ function AppContent({
     if (activeTab === "prolonges") return visibleItems.filter((item) => (item.vintedExtensionCount ?? 0) > 0 && itemStatus(item) !== "stock_b");
     return visibleItems;
   }, [activeTab, visibleItems]);
+  const availableWeightKg = useMemo(
+    () => tabItems.reduce(
+      (total, item) => total + (item.weightKg ?? klydeAverageWeightKg(item.category, item.subcategory, item.subsubcategory)) * item.quantity,
+      0,
+    ),
+    [tabItems],
+  );
   const locationOptions = useMemo(
     () =>
       Array.from(new Set(allItems.map((item) => item.location ?? "").filter(Boolean))).sort((a, b) =>
@@ -1154,6 +1169,50 @@ function AppContent({
     if (justSaved) setJustSaved(false);
   }
 
+  function setTaxonomyGender(gender: string) {
+    const category = klydeCategories(gender)[0] ?? "";
+    const subcategory = klydeSubcategories(gender, category)[0] ?? "";
+    const subsubcategory = klydeSubsubcategories(gender, category, subcategory)[0] ?? "";
+    setForm((current) => ({
+      ...current,
+      gender,
+      category,
+      subcategory,
+      subsubcategory,
+      weightKg: String(klydeAverageWeightKg(category, subcategory, subsubcategory)),
+    }));
+  }
+
+  function setTaxonomyCategory(category: string) {
+    const subcategory = klydeSubcategories(form.gender, category)[0] ?? "";
+    const subsubcategory = klydeSubsubcategories(form.gender, category, subcategory)[0] ?? "";
+    setForm((current) => ({
+      ...current,
+      category,
+      subcategory,
+      subsubcategory,
+      weightKg: String(klydeAverageWeightKg(category, subcategory, subsubcategory)),
+    }));
+  }
+
+  function setTaxonomySubcategory(subcategory: string) {
+    const subsubcategory = klydeSubsubcategories(form.gender, form.category, subcategory)[0] ?? "";
+    setForm((current) => ({
+      ...current,
+      subcategory,
+      subsubcategory,
+      weightKg: String(klydeAverageWeightKg(current.category, subcategory, subsubcategory)),
+    }));
+  }
+
+  function setTaxonomySubsubcategory(subsubcategory: string) {
+    setForm((current) => ({
+      ...current,
+      subsubcategory,
+      weightKg: String(klydeAverageWeightKg(current.category, current.subcategory, subsubcategory)),
+    }));
+  }
+
   function openNewArticle() {
     setEditingId(null);
     setForm(initialForm);
@@ -1171,6 +1230,8 @@ function AppContent({
       description: item.description,
       category: findCategoryKey(item.category) ?? item.category,
       subcategory: item.subcategory ?? "",
+      subsubcategory: item.subsubcategory ?? "",
+      weightKg: item.weightKg != null ? String(item.weightKg) : String(klydeAverageWeightKg(item.category, item.subcategory, item.subsubcategory)),
       brand: item.brand ?? "",
       size: item.size ?? "",
       condition: item.condition,
@@ -1412,6 +1473,8 @@ function AppContent({
         description: result.description ?? current.description,
         category: result.category ?? current.category,
         subcategory: result.subcategory ?? current.subcategory,
+        subsubcategory: result.subsubcategory ?? current.subsubcategory,
+        weightKg: result.weightKg != null ? String(result.weightKg) : String(klydeAverageWeightKg(result.category ?? current.category, result.subcategory ?? current.subcategory, result.subsubcategory ?? current.subsubcategory)),
         brand: result.brand ?? "",
         size: result.size ?? "",
         condition: result.condition ?? current.condition,
@@ -1488,6 +1551,8 @@ function AppContent({
       description: form.description,
       category: form.category,
       subcategory: form.subcategory || undefined,
+      subsubcategory: form.subsubcategory || undefined,
+      weightKg: asNumber(form.weightKg),
       brand: form.brand || undefined,
       size: (showSizeField && form.size) || undefined,
       condition: form.condition,
@@ -1585,8 +1650,9 @@ function AppContent({
     }
   }
 
-  const formCategoryKey = findCategoryKey(form.category);
-  const formSubcategories = formCategoryKey ? categoryTree[formCategoryKey] : [];
+  const formCategories = klydeCategories(form.gender);
+  const formSubcategories = klydeSubcategories(form.gender, form.category);
+  const formSubsubcategories = klydeSubsubcategories(form.gender, form.category, form.subcategory);
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
@@ -1702,7 +1768,7 @@ function AppContent({
           {[item.brand, item.size, item.condition].filter(Boolean).join(" · ")}
         </div>
         <div className="text-xs text-[var(--muted-foreground)]">
-          {[item.gender, item.category, item.subcategory, item.color].filter(Boolean).join(" · ")}
+          {[item.gender, item.category, item.subcategory, item.subsubcategory, item.color].filter(Boolean).join(" · ")}
         </div>
         <div className="flex items-center justify-between gap-2 pt-1 text-xs text-[var(--muted-foreground)]">
           <span>Stock x{item.quantity}</span>
@@ -1762,7 +1828,7 @@ function AppContent({
       </td>
       <td className="px-4 py-3 text-[var(--muted-foreground)]">{item.sku || "—"}</td>
       <td className="px-4 py-3 text-[var(--muted-foreground)]">
-        {[item.category, item.subcategory].filter(Boolean).join(" · ") || "—"}
+        {[item.category, item.subcategory, item.subsubcategory].filter(Boolean).join(" · ") || "—"}
       </td>
       <td className="px-4 py-3 text-[var(--muted-foreground)]">{item.location || "—"}</td>
       <td className="px-4 py-3 font-semibold">
@@ -2176,6 +2242,12 @@ function AppContent({
               </div>
             ) : (
               <>
+                {activeTab === "stock" ? (
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
+                    <span className="text-sm font-semibold">Poids estimé disponible</span>
+                    <span className="text-lg font-black text-[var(--primary)]">{availableWeightKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg</span>
+                  </div>
+                ) : null}
                 {canPublish && selectedItems.length > 0 ? (
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/25 bg-[var(--primary)]/5 px-4 py-3">
                     <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -2377,6 +2449,8 @@ function AppContent({
                     ["Genre", detailItem.gender ?? "-"],
                     ["Catégorie", detailItem.category],
                     ["Sous-catégorie", detailItem.subcategory ?? "-"],
+                    ["Sous-sous-catégorie", detailItem.subsubcategory ?? "-"],
+                    ["Poids estimé", `${(detailItem.weightKg ?? klydeAverageWeightKg(detailItem.category, detailItem.subcategory, detailItem.subsubcategory)).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} kg`],
                     ["Couleur", detailItem.color ?? "-"],
                     ["Matière", detailItem.material ?? "-"],
                     ["Référence", detailItem.sku ?? "-"],
@@ -2721,16 +2795,19 @@ function AppContent({
               <div className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
                 <h3 className="text-sm font-semibold">Caractéristiques</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Genre">
+                    <select className={inputClass()} value={form.gender} onChange={(event) => setTaxonomyGender(event.target.value)}>
+                      <option value="">À préciser</option>
+                      {genders.map((gender) => <option key={gender} value={gender}>{gender}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Catégorie">
                     <select
                       className={inputClass()}
                       value={form.category}
-                      onChange={(event) => {
-                        update("category", event.target.value);
-                        update("subcategory", "");
-                      }}
+                      onChange={(event) => setTaxonomyCategory(event.target.value)}
                     >
-                      {categories.map((category) => (
+                      {formCategories.map((category) => (
                         <option key={category} value={category}>
                           {category}
                         </option>
@@ -2741,7 +2818,7 @@ function AppContent({
                     <select
                       className={inputClass()}
                       value={form.subcategory}
-                      onChange={(event) => update("subcategory", event.target.value)}
+                      onChange={(event) => setTaxonomySubcategory(event.target.value)}
                     >
                       <option value="">À préciser</option>
                       {formSubcategories.map((subcategory) => (
@@ -2750,6 +2827,15 @@ function AppContent({
                         </option>
                       ))}
                     </select>
+                  </Field>
+                  <Field label="Sous-sous-catégorie">
+                    <select className={inputClass()} value={form.subsubcategory} onChange={(event) => setTaxonomySubsubcategory(event.target.value)} disabled={formSubsubcategories.length === 0}>
+                      <option value="">À préciser</option>
+                      {formSubsubcategories.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
+                    <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
                   </Field>
                   <Field label="Marque">
                     <input
@@ -2799,16 +2885,6 @@ function AppContent({
                       </select>
                     </Field>
                   ) : null}
-                  <Field label="Genre">
-                    <select className={inputClass()} value={form.gender} onChange={(event) => update("gender", event.target.value)}>
-                      <option value="">À préciser</option>
-                      {genders.map((gender) => (
-                        <option key={gender} value={gender}>
-                          {gender}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
                   <Field label="Style">
                     <input className={inputClass()} value={form.style} onChange={(event) => update("style", event.target.value)} />
                   </Field>
@@ -3066,17 +3142,20 @@ function AppContent({
                     required
                   />
                 </Field>
+                <Field label="Genre">
+                  <select className={inputClass()} value={form.gender} onChange={(event) => setTaxonomyGender(event.target.value)}>
+                    <option value="">À préciser</option>
+                    {genders.map((gender) => <option key={gender} value={gender}>{gender}</option>)}
+                  </select>
+                </Field>
                 <Field label="Catégorie">
                   <select
                     className={inputClass()}
                     value={form.category}
-                    onChange={(event) => {
-                      update("category", event.target.value);
-                      update("subcategory", "");
-                    }}
+                    onChange={(event) => setTaxonomyCategory(event.target.value)}
                     required
                   >
-                    {categories.map((category) => (
+                    {formCategories.map((category) => (
                       <option key={category} value={category}>
                         {category}
                       </option>
@@ -3087,7 +3166,7 @@ function AppContent({
                   <select
                     className={inputClass()}
                     value={form.subcategory}
-                    onChange={(event) => update("subcategory", event.target.value)}
+                    onChange={(event) => setTaxonomySubcategory(event.target.value)}
                   >
                     <option value="">À préciser</option>
                     {formSubcategories.map((subcategory) => (
@@ -3096,6 +3175,15 @@ function AppContent({
                       </option>
                     ))}
                   </select>
+                </Field>
+                <Field label="Sous-sous-catégorie">
+                  <select className={inputClass()} value={form.subsubcategory} onChange={(event) => setTaxonomySubsubcategory(event.target.value)} disabled={formSubsubcategories.length === 0}>
+                    <option value="">À préciser</option>
+                    {formSubsubcategories.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
+                  </select>
+                </Field>
+                <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
+                  <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
                 </Field>
                 <Field label="Marque">
                   <input className={inputClass()} value={form.brand} onChange={(event) => update("brand", event.target.value)} />
@@ -3149,16 +3237,6 @@ function AppContent({
                     <option>Petit</option>
                     <option>Moyen</option>
                     <option>Grand</option>
-                  </select>
-                </Field>
-                <Field label="Genre">
-                  <select className={inputClass()} value={form.gender} onChange={(event) => update("gender", event.target.value)}>
-                    <option value="">À préciser</option>
-                    {genders.map((gender) => (
-                      <option key={gender} value={gender}>
-                        {gender}
-                      </option>
-                    ))}
                   </select>
                 </Field>
                 <Field label="Style">
