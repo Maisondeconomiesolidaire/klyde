@@ -161,7 +161,7 @@ export const requestOrigin = v.union(
   v.literal("external"),
 );
 
-export const hrEmployeeGender = v.union(v.literal("homme"), v.literal("femme"));
+export const hrEmployeeGender = v.union(v.literal("Monsieur"), v.literal("Madame"));
 
 export const hrEmployeeStructure = v.union(
   v.literal("Pays de Bray Services 60"),
@@ -179,6 +179,9 @@ export const hrContractWebhookPayload = v.object({
   adresse_salarie: v.string(),
   num_sec_sociale: v.string(),
   structure: v.string(),
+  Nom_contrat: v.optional(v.string()),
+  nom_contrat: v.optional(v.string()),
+  numero_contrat: v.optional(v.string()),
   type_contrat: v.string(),
   type_document: v.string(),
   date_fin_contrat: v.string(),
@@ -1489,6 +1492,10 @@ export default defineSchema(
     description: v.string(),
     category: v.string(),
     subcategory: v.optional(v.string()),
+    /** Niveau le plus précis de la taxonomie Klyd (ex. Robes courtes). */
+    subsubcategory: v.optional(v.string()),
+    /** Poids estimé ou corrigé de l'article, en kilogrammes. */
+    weightKg: v.optional(v.number()),
     brand: v.optional(v.string()),
     size: v.optional(v.string()),
     condition: v.string(),
