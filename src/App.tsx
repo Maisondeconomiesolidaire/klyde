@@ -981,6 +981,105 @@ function Field({
   );
 }
 
+/** Intitulé du niveau en cours de sélection, par profondeur. */
+const TAXONOMY_LEVELS = ["Genre", "Catégorie", "Sous-catégorie", "Sous-sous-catégorie"];
+
+/** Options du niveau suivant pour un chemin partiel de taxonomie. */
+function taxonomyOptions(path: string[]): string[] {
+  if (path.length === 0) return [...KLYDE_GENDERS];
+  if (path.length === 1) return klydeCategories(path[0]);
+  if (path.length === 2) return klydeSubcategories(path[0], path[1]);
+  if (path.length === 3) return klydeSubsubcategories(path[0], path[1], path[2]);
+  return [];
+}
+
+/**
+ * Sélection de catégorie en cascade, calquée sur Vinted : un seul niveau à
+ * l'écran, chaque clic descend d'un cran (Genre → Catégorie → Sous-catégorie →
+ * Sous-sous-catégorie) et le choix est validé dès qu'un niveau n'a plus
+ * d'enfant.
+ */
+function CategoryPicker({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (path: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<string[]>([]);
+  const options = taxonomyOptions(draft);
+
+  function choose(option: string) {
+    const next = [...draft, option];
+    if (taxonomyOptions(next).length === 0) {
+      onChange(next);
+      setDraft([]);
+      setOpen(false);
+      return;
+    }
+    setDraft(next);
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDraft([]);
+          setOpen(true);
+        }}
+        className="flex h-10 w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 text-left text-sm outline-none focus:border-[var(--primary)]"
+      >
+        <span className={cn("flex-1 truncate", !value.length && "text-[var(--muted-foreground)]")}>
+          {value.length ? value.join(" › ") : "Choisir une catégorie"}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)]">
+      <div className="flex items-center gap-2 border-b border-[var(--border)] px-2 py-2">
+        <button
+          type="button"
+          onClick={() => (draft.length ? setDraft(draft.slice(0, -1)) : setOpen(false))}
+          className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--input)]"
+          aria-label={draft.length ? "Niveau précédent" : "Fermer"}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-semibold">{TAXONOMY_LEVELS[draft.length]}</p>
+          {draft.length ? (
+            <p className="truncate text-[11px] text-[var(--muted-foreground)]">{draft.join(" › ")}</p>
+          ) : null}
+        </div>
+      </div>
+      <ul className="max-h-64 overflow-y-auto">
+        {options.map((option) => {
+          const isLeaf = taxonomyOptions([...draft, option]).length === 0;
+          return (
+            <li key={option}>
+              <button
+                type="button"
+                onClick={() => choose(option)}
+                className="flex w-full items-center gap-2 border-b border-[var(--border)] px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-[var(--input)]"
+              >
+                <span className="flex-1 truncate">{option}</span>
+                {isLeaf ? null : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function Logo({ theme = "light" }: { theme?: "light" | "dark" }) {
   return (
     <img
@@ -1195,10 +1294,9 @@ function AppContent({
     if (justSaved) setJustSaved(false);
   }
 
-  function setTaxonomyGender(gender: string) {
-    const category = klydeCategories(gender)[0] ?? "";
-    const subcategory = klydeSubcategories(gender, category)[0] ?? "";
-    const subsubcategory = klydeSubsubcategories(gender, category, subcategory)[0] ?? "";
+  /** Chemin complet choisi dans le sélecteur en cascade, poids recalculé. */
+  function setTaxonomyPath(path: string[]) {
+    const [gender = "", category = "", subcategory = "", subsubcategory = ""] = path;
     setForm((current) => ({
       ...current,
       gender,
@@ -1207,36 +1305,7 @@ function AppContent({
       subsubcategory,
       weightKg: String(klydeAverageWeightKg(category, subcategory, subsubcategory)),
     }));
-  }
-
-  function setTaxonomyCategory(category: string) {
-    const subcategory = klydeSubcategories(form.gender, category)[0] ?? "";
-    const subsubcategory = klydeSubsubcategories(form.gender, category, subcategory)[0] ?? "";
-    setForm((current) => ({
-      ...current,
-      category,
-      subcategory,
-      subsubcategory,
-      weightKg: String(klydeAverageWeightKg(category, subcategory, subsubcategory)),
-    }));
-  }
-
-  function setTaxonomySubcategory(subcategory: string) {
-    const subsubcategory = klydeSubsubcategories(form.gender, form.category, subcategory)[0] ?? "";
-    setForm((current) => ({
-      ...current,
-      subcategory,
-      subsubcategory,
-      weightKg: String(klydeAverageWeightKg(current.category, subcategory, subsubcategory)),
-    }));
-  }
-
-  function setTaxonomySubsubcategory(subsubcategory: string) {
-    setForm((current) => ({
-      ...current,
-      subsubcategory,
-      weightKg: String(klydeAverageWeightKg(current.category, current.subcategory, subsubcategory)),
-    }));
+    if (justSaved) setJustSaved(false);
   }
 
   function openNewArticle() {
@@ -1695,9 +1764,10 @@ function AppContent({
     }
   }
 
-  const formCategories = klydeCategories(form.gender);
-  const formSubcategories = klydeSubcategories(form.gender, form.category);
-  const formSubsubcategories = klydeSubsubcategories(form.gender, form.category, form.subcategory);
+  // Le chemin enregistré est affiché tel quel, y compris pour les articles
+  // saisis avant l'alignement sur le catalogue Vinted : rien n'est écrasé tant
+  // que l'utilisateur n'a pas re-sélectionné une catégorie.
+  const taxonomyPath = [form.gender, form.category, form.subcategory, form.subsubcategory].filter(Boolean);
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
@@ -2879,45 +2949,10 @@ function AppContent({
               <div className="grid gap-4 rounded-3xl border border-[var(--border)] bg-[var(--card)] p-5">
                 <h3 className="text-sm font-semibold">Caractéristiques</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Genre">
-                    <select className={inputClass()} value={form.gender} onChange={(event) => setTaxonomyGender(event.target.value)}>
-                      <option value="">À préciser</option>
-                      {genders.map((gender) => <option key={gender} value={gender}>{gender}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Catégorie">
-                    <select
-                      className={inputClass()}
-                      value={form.category}
-                      onChange={(event) => setTaxonomyCategory(event.target.value)}
-                    >
-                      {formCategories.map((category) => (
-                        <option key={category} value={category}>
-                          {category}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Sous-catégorie">
-                    <select
-                      className={inputClass()}
-                      value={form.subcategory}
-                      onChange={(event) => setTaxonomySubcategory(event.target.value)}
-                    >
-                      <option value="">À préciser</option>
-                      {formSubcategories.map((subcategory) => (
-                        <option key={subcategory} value={subcategory}>
-                          {subcategory}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Sous-sous-catégorie">
-                    <select className={inputClass()} value={form.subsubcategory} onChange={(event) => setTaxonomySubsubcategory(event.target.value)} disabled={formSubsubcategories.length === 0}>
-                      <option value="">À préciser</option>
-                      {formSubsubcategories.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
-                    </select>
-                  </Field>
+                  <div className="grid gap-1.5 sm:col-span-2">
+                    <span className="text-xs font-medium text-[var(--muted-foreground)]">Catégorie</span>
+                    <CategoryPicker value={taxonomyPath} onChange={setTaxonomyPath} />
+                  </div>
                   <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
                     <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
                   </Field>
@@ -3248,46 +3283,10 @@ function AppContent({
                     required
                   />
                 </Field>
-                <Field label="Genre">
-                  <select className={inputClass()} value={form.gender} onChange={(event) => setTaxonomyGender(event.target.value)}>
-                    <option value="">À préciser</option>
-                    {genders.map((gender) => <option key={gender} value={gender}>{gender}</option>)}
-                  </select>
-                </Field>
-                <Field label="Catégorie">
-                  <select
-                    className={inputClass()}
-                    value={form.category}
-                    onChange={(event) => setTaxonomyCategory(event.target.value)}
-                    required
-                  >
-                    {formCategories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Sous-catégorie">
-                  <select
-                    className={inputClass()}
-                    value={form.subcategory}
-                    onChange={(event) => setTaxonomySubcategory(event.target.value)}
-                  >
-                    <option value="">À préciser</option>
-                    {formSubcategories.map((subcategory) => (
-                      <option key={subcategory} value={subcategory}>
-                        {subcategory}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Sous-sous-catégorie">
-                  <select className={inputClass()} value={form.subsubcategory} onChange={(event) => setTaxonomySubsubcategory(event.target.value)} disabled={formSubsubcategories.length === 0}>
-                    <option value="">À préciser</option>
-                    {formSubsubcategories.map((subcategory) => <option key={subcategory} value={subcategory}>{subcategory}</option>)}
-                  </select>
-                </Field>
+                <div className="grid gap-1.5 md:col-span-2">
+                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Catégorie</span>
+                  <CategoryPicker value={taxonomyPath} onChange={setTaxonomyPath} />
+                </div>
                 <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
                   <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
                 </Field>
