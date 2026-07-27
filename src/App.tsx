@@ -1580,6 +1580,7 @@ function AppContent({
     try {
       const result = await analyzePhotos({
         storageIds: form.photos,
+        outlet: form.outlet,
       });
       setForm((current) => ({
         ...current,
@@ -1768,6 +1769,14 @@ function AppContent({
   // saisis avant l'alignement sur le catalogue Vinted : rien n'est écrasé tant
   // que l'utilisateur n'a pas re-sélectionné une catégorie.
   const taxonomyPath = [form.gender, form.category, form.subcategory, form.subsubcategory].filter(Boolean);
+
+  // Comme sur Vinted, les caractéristiques de l'article n'apparaissent qu'une
+  // fois la catégorie descendue jusqu'à son dernier niveau. Les articles
+  // antérieurs à l'alignement sur le catalogue Vinted en sont exemptés : leur
+  // chemin n'existe plus dans l'arbre et ne pourrait jamais être « complet ».
+  const isLegacyTaxonomy = taxonomyPath.length > 0 && !KLYDE_GENDERS.includes(taxonomyPath[0]);
+  const taxonomyComplete =
+    isLegacyTaxonomy || (taxonomyPath.length >= 3 && taxonomyOptions(taxonomyPath).length === 0);
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
@@ -2953,56 +2962,65 @@ function AppContent({
                     <span className="text-xs font-medium text-[var(--muted-foreground)]">Catégorie</span>
                     <CategoryPicker value={taxonomyPath} onChange={setTaxonomyPath} />
                   </div>
-                  <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
-                    <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
-                  </Field>
-                  <Field label="Marque">
-                    <input
-                      className={inputClass()}
-                      value={form.brand}
-                      onChange={(event) => update("brand", event.target.value)}
-                    />
-                  </Field>
-                  {showSizeField ? (
-                    <Field label="Taille">
-                      <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
-                        <option value="">À préciser</option>
-                        {sizes.map((size) => (
-                          <option key={size} value={size}>
-                            {size}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
+                  {!taxonomyComplete ? (
+                    <p className="rounded-md bg-[var(--input)] px-3 py-2.5 text-xs text-[var(--muted-foreground)] sm:col-span-2">
+                      Choisis la catégorie jusqu’au dernier niveau pour afficher les caractéristiques.
+                    </p>
                   ) : null}
-                  <Field label="État">
-                    <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
-                      {conditions.map((condition) => (
-                        <option key={condition}>{condition}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Couleur">
-                    <select className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)}>
-                      <option value="">À préciser</option>
-                      {colors.map((color) => (
-                        <option key={color} value={color}>
-                          {color}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {showMaterialField ? (
-                    <Field label="Matière">
-                      <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                  {taxonomyComplete ? (
+                    <>
+                    <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
+                      <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
+                    </Field>
+                    <Field label="Marque">
+                      <input
+                        className={inputClass()}
+                        value={form.brand}
+                        onChange={(event) => update("brand", event.target.value)}
+                      />
+                    </Field>
+                    {showSizeField ? (
+                      <Field label="Taille">
+                        <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
+                          <option value="">À préciser</option>
+                          {sizes.map((size) => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : null}
+                    <Field label="État">
+                      <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
+                        {conditions.map((condition) => (
+                          <option key={condition}>{condition}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Couleur">
+                      <select className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)}>
                         <option value="">À préciser</option>
-                        {materials.map((material) => (
-                          <option key={material} value={material}>
-                            {material}
+                        {colors.map((color) => (
+                          <option key={color} value={color}>
+                            {color}
                           </option>
                         ))}
                       </select>
                     </Field>
+                    {showMaterialField ? (
+                      <Field label="Matière">
+                        <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                          <option value="">À préciser</option>
+                          {materials.map((material) => (
+                            <option key={material} value={material}>
+                              {material}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : null}
+                    </>
                   ) : null}
                   <Field label="Style">
                     <input className={inputClass()} value={form.style} onChange={(event) => update("style", event.target.value)} />
@@ -3140,6 +3158,30 @@ function AppContent({
             </div>
 
             <div className="mx-auto grid w-full max-w-3xl gap-4 p-4 sm:p-6">
+              <div className="grid gap-2">
+                <span className="text-sm font-semibold">Enseigne</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {OUTLETS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => update("outlet", o.value as FormState["outlet"])}
+                      aria-pressed={form.outlet === o.value}
+                      className={cn(
+                        "flex h-14 items-center justify-center rounded-2xl border-2 text-base font-bold transition",
+                        form.outlet === o.value
+                          ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+                          : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--muted)]",
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  L’enseigne choisie détermine le style de l’annonce générée par l’IA.
+                </p>
+              </div>
               <div className="grid gap-2 sm:grid-cols-[2fr_1fr]">
                 <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border)] bg-[var(--card)] p-4 text-center">
                   <ImagePlus className="h-7 w-7 text-[var(--muted-foreground)]" />
@@ -3287,52 +3329,61 @@ function AppContent({
                   <span className="text-xs font-medium text-[var(--muted-foreground)]">Catégorie</span>
                   <CategoryPicker value={taxonomyPath} onChange={setTaxonomyPath} />
                 </div>
-                <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
-                  <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
-                </Field>
-                <Field label="Marque">
-                  <input className={inputClass()} value={form.brand} onChange={(event) => update("brand", event.target.value)} />
-                </Field>
-                {showSizeField ? (
-                  <Field label="Taille">
-                    <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
-                      <option value="">À préciser</option>
-                      {sizes.map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                {!taxonomyComplete ? (
+                  <p className="rounded-md bg-[var(--input)] px-3 py-2.5 text-xs text-[var(--muted-foreground)] md:col-span-2">
+                    Choisis la catégorie jusqu’au dernier niveau pour afficher les caractéristiques.
+                  </p>
                 ) : null}
-                <Field label="État">
-                  <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
-                    {conditions.map((condition) => (
-                      <option key={condition}>{condition}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Couleur">
-                  <select className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)}>
-                    <option value="">À préciser</option>
-                    {colors.map((color) => (
-                      <option key={color} value={color}>
-                        {color}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {showMaterialField ? (
-                  <Field label="Matière">
-                    <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                {taxonomyComplete ? (
+                  <>
+                  <Field label="Poids estimé (kg)" hint="Prérempli selon la sous-sous-catégorie ; modifiable si besoin.">
+                    <input className={inputClass()} inputMode="decimal" value={form.weightKg} onChange={(event) => update("weightKg", event.target.value)} />
+                  </Field>
+                  <Field label="Marque">
+                    <input className={inputClass()} value={form.brand} onChange={(event) => update("brand", event.target.value)} />
+                  </Field>
+                  {showSizeField ? (
+                    <Field label="Taille">
+                      <select className={inputClass()} value={form.size} onChange={(event) => update("size", event.target.value)}>
+                        <option value="">À préciser</option>
+                        {sizes.map((size) => (
+                          <option key={size} value={size}>
+                            {size}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : null}
+                  <Field label="État">
+                    <select className={inputClass()} value={form.condition} onChange={(event) => update("condition", event.target.value)}>
+                      {conditions.map((condition) => (
+                        <option key={condition}>{condition}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Couleur">
+                    <select className={inputClass()} value={form.color} onChange={(event) => update("color", event.target.value)}>
                       <option value="">À préciser</option>
-                      {materials.map((material) => (
-                        <option key={material} value={material}>
-                          {material}
+                      {colors.map((color) => (
+                        <option key={color} value={color}>
+                          {color}
                         </option>
                       ))}
                     </select>
                   </Field>
+                  {showMaterialField ? (
+                    <Field label="Matière">
+                      <select className={inputClass()} value={form.material} onChange={(event) => update("material", event.target.value)}>
+                        <option value="">À préciser</option>
+                        {materials.map((material) => (
+                          <option key={material} value={material}>
+                            {material}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : null}
+                  </>
                 ) : null}
                 <Field label="Prix">
                   <input className={inputClass()} inputMode="decimal" value={form.price} onChange={(event) => update("price", event.target.value)} />
@@ -3360,19 +3411,6 @@ function AppContent({
                 </Field>
                 <Field label="Quantité">
                   <input className={inputClass()} inputMode="numeric" value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
-                </Field>
-                <Field label="Enseigne">
-                  <select
-                    className={inputClass()}
-                    value={form.outlet}
-                    onChange={(event) => update("outlet", event.target.value as FormState["outlet"])}
-                  >
-                    {OUTLETS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
                 </Field>
               </div>
 
