@@ -402,6 +402,28 @@ function itemStatus(item: ListedItem): KlydeStatus {
   return item.status as KlydeStatus;
 }
 
+/**
+ * Montant retenu pour le chiffre d'affaires d'un article. Pour un article
+ * vendu (« gagné »), on prend le prix réellement encaissé s'il est renseigné ;
+ * sinon (colonnes du process non encore vendues) on prend le prix affiché.
+ */
+function itemRevenue(item: ListedItem): number {
+  if (itemStatus(item) === "gagne") return item.actualSalePrice ?? item.price ?? 0;
+  return item.price ?? 0;
+}
+
+function columnRevenue(items: ListedItem[]): number {
+  return items.reduce((sum, item) => sum + itemRevenue(item), 0);
+}
+
+function formatRevenue(value: number): string {
+  return value.toLocaleString("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  });
+}
+
 function statusLabel(status: string) {
   const normalized = status === "en_stock" || status === "reserve" ? "stock" : status;
   return (
@@ -1323,6 +1345,25 @@ function AppContent({
       return { ...current, photos, previewUrls };
     });
     setActivePhotoIndex(0);
+  }
+
+  /** Déplace la photo `index` d'un cran (direction -1 = avant, +1 = après). */
+  function movePhoto(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    setForm((current) => {
+      if (target < 0 || target >= current.photos.length) return current;
+      const photos = current.photos.slice();
+      const previewUrls = current.previewUrls.slice();
+      [photos[index], photos[target]] = [photos[target], photos[index]];
+      [previewUrls[index], previewUrls[target]] = [previewUrls[target], previewUrls[index]];
+      return { ...current, photos, previewUrls };
+    });
+    setActivePhotoIndex((current) => {
+      if (target < 0 || target >= form.photos.length) return current;
+      if (current === index) return target;
+      if (current === target) return index;
+      return current;
+    });
   }
 
   function replacePhotoAt(index: number, newId: Id<"_storage">, newUrl: string) {
@@ -2327,6 +2368,11 @@ function AppContent({
                 Aucun article gagné.
               </div>
             ) : (
+              <>
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
+                <span className="text-sm font-semibold">Chiffre d'affaires réalisé</span>
+                <span className="text-lg font-black text-[var(--primary)]">{formatRevenue(columnRevenue(wonItems))}</span>
+              </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {wonItems.map((item) => (
                   <div key={item._id} className="grid gap-2">
@@ -2344,6 +2390,7 @@ function AppContent({
                   </div>
                 ))}
               </div>
+              </>
             )
           ) : (
             <div className="grid gap-4 lg:grid-cols-3">
@@ -2375,11 +2422,16 @@ function AppContent({
                         : "border-[var(--border)]",
                     )}
                   >
-                    <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-3">
+                    <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-3">
                       <h2 className="text-sm font-semibold">{column.label}</h2>
-                      <span className="rounded-md bg-[var(--muted)] px-2 py-1 text-xs">
-                        {columnItems.length}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded-md bg-[var(--primary)]/10 px-2 py-1 text-xs font-semibold text-[var(--primary)]">
+                          {formatRevenue(columnRevenue(columnItems))}
+                        </span>
+                        <span className="rounded-md bg-[var(--muted)] px-2 py-1 text-xs">
+                          {columnItems.length}
+                        </span>
+                      </div>
                     </div>
                     <div className="grid gap-2 p-2">
                       {dropTarget === column.status ? (
@@ -2652,6 +2704,28 @@ function AppContent({
                     >
                       <X className="h-3 w-3" />
                     </button>
+                    {index > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => movePhoto(index, -1)}
+                        className="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-black/70 p-1 text-white transition"
+                        aria-label="Déplacer la photo vers la gauche"
+                        title="Déplacer vers la gauche"
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                      </button>
+                    ) : null}
+                    {index < form.previewUrls.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => movePhoto(index, 1)}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-black/70 p-1 text-white transition"
+                        aria-label="Déplacer la photo vers la droite"
+                        title="Déplacer vers la droite"
+                      >
+                        <ChevronRight className="h-3 w-3" />
+                      </button>
+                    ) : null}
                   </div>
                 ))}
                 <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] text-center text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]">
@@ -3108,6 +3182,28 @@ function AppContent({
                           <Star className="h-3.5 w-3.5" />
                         </button>
                       )}
+                      {index > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(index, -1)}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 rounded-md bg-black/70 p-1 text-white"
+                          aria-label="Déplacer la photo vers la gauche"
+                          title="Déplacer vers la gauche"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                      {index < form.previewUrls.length - 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(index, 1)}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-black/70 p-1 text-white"
+                          aria-label="Déplacer la photo vers la droite"
+                          title="Déplacer vers la droite"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                   ))}
                 </div>

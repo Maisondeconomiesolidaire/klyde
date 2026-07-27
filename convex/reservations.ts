@@ -8,6 +8,7 @@ import {
   clerkIdForEmail,
   emailForClerkId,
   fetchInternalClerkDirectory,
+  formatUserName,
   hasCrmPermission,
   isReservationParticipant,
   photoForClerkId,
@@ -88,11 +89,7 @@ function displayName(identity: {
   familyName?: string | null;
   email?: string | null;
 }) {
-  const fullName = [identity.givenName, identity.familyName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  return identity.name?.trim() || fullName || identity.email?.trim() || "Utilisateur";
+  return formatUserName(identity);
 }
 
 function normalizeVehicleKind(kind: string) {
@@ -120,7 +117,13 @@ async function approvedReservationsForVehicle(
     .query("vehicleReservations")
     .withIndex("by_vehicleId", (q) => q.eq("vehicleId", vehicleId))
     .collect();
-  return reservations.filter((reservation) => reservation.status === "approved");
+  // Un retour enregistré clôt la réservation opérationnellement : elle reste
+  // dans l'historique, mais ne doit plus jamais entrer dans les conflits de
+  // disponibilité, quelle que soit l'heure à laquelle le formulaire a été
+  // envoyé.
+  return reservations.filter(
+    (reservation) => reservation.status === "approved" && !reservation.feedbackSubmittedAt,
+  );
 }
 
 /**

@@ -94,14 +94,24 @@ export const bpUnit = v.union(
   v.literal("unite"),
 );
 
-/** App « Bennes & Pro » — facturation Stripe du DIB d'un dépôt. */
+/** Une ligne de matière facturée sur une facture Stripe Bennes & Pro. */
+export const bpBillingLine = v.object({
+  material: bpMaterial,
+  weightKg: v.number(),
+  priceCentsPerKg: v.number(),
+  amountCents: v.number(),
+});
+
+/** App « Bennes & Pro » — facturation Stripe des matières payantes d'un dépôt. */
 export const bpBilling = v.object({
-  /** Poids DIB facturable en kg (lignes kg + tonnes converties). */
+  /** Poids total facturable en kg (lignes kg + tonnes converties). */
   weightKg: v.number(),
   /** Prix appliqué, en centimes d'euro par kg (HT). */
   priceCentsPerKg: v.number(),
   /** Montant HT en centimes d'euro (la TVA est ajoutée sur la facture Stripe). */
   amountCents: v.number(),
+  /** Détail par matière, conservé pour éditer exactement les lignes Stripe. */
+  items: v.optional(v.array(bpBillingLine)),
   /** Taux de TVA appliqué (ex. 20). Les anciens dépôts sans valeur sont affichés au taux courant. */
   vatRate: v.optional(v.number()),
   status: v.union(
@@ -1214,6 +1224,14 @@ export default defineSchema(
     partsCost: v.optional(v.number()),
     /** Pièces jointes : photos de la panne, de la réparation, factures… */
     attachments: v.optional(v.array(v.id("_storage"))),
+    /** Photos de l'état AVANT intervention (constat, panne). */
+    beforePhotos: v.optional(v.array(v.id("_storage"))),
+    /** Descriptif AVANT intervention : constat, symptômes, état relevé. */
+    beforeNotes: v.optional(v.string()),
+    /** Photos APRÈS intervention (réparation, pièces posées). */
+    afterPhotos: v.optional(v.array(v.id("_storage"))),
+    /** Descriptif des opérations réalisées pendant l'intervention. */
+    afterNotes: v.optional(v.string()),
     createdBy: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1614,7 +1632,7 @@ export default defineSchema(
     /** Documents obligatoires marqués « Signé » par le staff. */
     conventionSignedAt: v.optional(v.number()),
     protocoleSignedAt: v.optional(v.number()),
-    /** Client Stripe associé (facturation du DIB). */
+    /** Client Stripe associé à la facturation. */
     stripeCustomerId: v.optional(v.string()),
     createdAt: v.number(),
   })
@@ -1700,7 +1718,7 @@ export default defineSchema(
     attachments: v.array(v.id("_storage")),
     comment: v.optional(v.string()),
     signature: v.optional(v.id("_storage")),
-    /** Facturation Stripe du DIB (seul flux facturé, au poids). */
+    /** Facturation Stripe des matières payantes, au poids. */
     billing: v.optional(bpBilling),
     createdBy: v.optional(v.string()),
     createdAt: v.number(),
