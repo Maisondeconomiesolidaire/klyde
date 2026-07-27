@@ -403,12 +403,14 @@ function itemStatus(item: ListedItem): KlydeStatus {
 }
 
 /**
- * Montant retenu pour le chiffre d'affaires d'un article. Pour un article
- * vendu (« gagné »), on prend le prix réellement encaissé s'il est renseigné ;
- * sinon (colonnes du process non encore vendues) on prend le prix affiché.
+ * Montant retenu pour le suivi commercial. Dès qu'un article est vendu
+ * (« en cours d'envoi »), son prix réellement encaissé est la référence :
+ * c'est aussi cette valeur qui alimente les totaux de chaque statut.
  */
 function itemRevenue(item: ListedItem): number {
-  if (itemStatus(item) === "gagne") return item.actualSalePrice ?? item.price ?? 0;
+  if (["en_cours_envoi", "envoye", "gagne"].includes(itemStatus(item))) {
+    return item.actualSalePrice ?? item.price ?? 0;
+  }
   return item.price ?? 0;
 }
 
@@ -1884,7 +1886,7 @@ function AppContent({
         <div className="flex items-start justify-between gap-2">
           <h2 className="line-clamp-2 text-sm font-semibold">{item.title}</h2>
           <span className="shrink-0 text-sm font-semibold">
-            {item.price != null ? `${item.price.toFixed(2)} €` : "-"}
+            {activeTab === "suivi" ? formatPrice(itemRevenue(item)) : formatPrice(item.price)}
           </span>
         </div>
         <OutletBadge outlet={item.outlet} />
@@ -2044,9 +2046,7 @@ function AppContent({
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
           <h3 className="line-clamp-2 text-xs font-semibold leading-4">{item.title}</h3>
-          <span className="shrink-0 text-xs font-semibold">
-            {item.price != null ? `${item.price.toFixed(0)} €` : "-"}
-          </span>
+          <span className="shrink-0 text-xs font-semibold">{formatPrice(itemRevenue(item))}</span>
         </div>
         <div className="mt-1 truncate text-[11px] text-[var(--muted-foreground)]">
           {[item.brand, item.gender, item.size].filter(Boolean).join(" · ") || item.subcategory || item.category}
@@ -2583,7 +2583,12 @@ function AppContent({
 
                 <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
                   {[
-                    ["Prix", detailItem.price != null ? `${detailItem.price.toFixed(2)} €` : "-"],
+                    [
+                      ["en_cours_envoi", "envoye", "gagne"].includes(itemStatus(detailItem))
+                        ? "Prix de vente réel"
+                        : "Prix affiché",
+                      formatPrice(itemRevenue(detailItem)),
+                    ],
                     ["Marque", detailItem.brand ?? "-"],
                     ["Taille", detailItem.size ?? "-"],
                     ["État", detailItem.condition],
