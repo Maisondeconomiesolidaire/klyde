@@ -1188,7 +1188,8 @@ function AppContent({
   const setFeatured = useMutation(api.klyde.setFeatured);
   const setBoutiquePublished = useMutation(api.klyde.setBoutiquePublished);
   const access = useQuery(api.permissions.myAccess);
-  const points = useQuery(api.points.myPoints, {}) ?? 100;
+  // Points masqués pour les utilisateurs : conservés en arrière-plan
+  // (ensureMine + awards backend), simplement plus affichés pour le moment.
   const ensurePoints = useMutation(api.points.ensureMine);
   const can = (pageKey: string, action: string) => {
     if (!access) return false;
@@ -2144,7 +2145,6 @@ function AppContent({
             <KlydeUserAvatar />
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">{user?.firstName ?? user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Mon profil"}</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-xs font-bold text-[var(--primary)]">{points} pts <span title="Les points récompensent vos réservations, retours et participations utiles. Ils pourront bientôt débloquer des cadeaux et des récompenses.">?</span></span>
             </span>
           </button>
         </div>
