@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  Crop,
   ChevronRight,
   Download,
   Heart,
@@ -43,7 +44,15 @@ import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 import { KLYDE_GENDERS, klydeAverageWeightKg, klydeCategories, klydeSubcategories, klydeSubsubcategories } from "../convex/klydeTaxonomy";
 
-type KlydeStatus = "stock" | "stock_b" | "en_ligne" | "en_cours_envoi" | "envoye" | "gagne" | "archive";
+type KlydeStatus =
+  | "stock"
+  | "stock_b"
+  | "en_ligne"
+  | "en_cours_envoi"
+  | "envoye"
+  | "gagne"
+  | "magasin"
+  | "archive";
 type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique";
 
 type TrackingTab = "process" | "gagne";
@@ -437,6 +446,7 @@ function statusLabel(status: string) {
       envoye: "Envoyé",
       gagne: "Gagné",
       vendu: "Gagné",
+      magasin: "En magasin",
       archive: "Archivé",
     }[normalized] ?? "Stock"
   );
@@ -454,6 +464,7 @@ function statusPillClass(status: string) {
       envoye: "bg-violet-500 text-white",
       gagne: "bg-emerald-600 text-white",
       vendu: "bg-emerald-600 text-white",
+      magasin: "bg-rose-500 text-white",
       archive: "bg-[var(--muted)] text-[var(--muted-foreground)]",
     }[normalized] ?? "bg-[var(--muted)] text-[var(--muted-foreground)]"
   );
@@ -1156,6 +1167,9 @@ function AppContent({
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [justSaved, setJustSaved] = useState(false);
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
+  /** Photo en cours de glissement et case actuellement survolée. */
+  const [photoDragIndex, setPhotoDragIndex] = useState<number | null>(null);
+  const [photoDropIndex, setPhotoDropIndex] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
@@ -1182,6 +1196,7 @@ function AppContent({
   const advanceWorkflow = useMutation(api.klyde.advanceWorkflow);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const moveToStockB = useMutation(api.klyde.moveToStockB);
+  const moveToShop = useMutation(api.klyde.moveToShop);
   const extendVintedListing = useMutation(api.klyde.extendVintedListing);
   const setStockBDisposition = useMutation(api.klyde.setStockBDisposition);
   const removeItem = useMutation(api.klyde.remove);
@@ -1419,21 +1434,28 @@ function AppContent({
     setActivePhotoIndex(0);
   }
 
-  /** Déplace la photo `index` d'un cran (direction -1 = avant, +1 = après). */
-  function movePhoto(index: number, direction: -1 | 1) {
-    const target = index + direction;
+  /**
+   * Réordonne les photos par glisser-déposer : la photo `from` est retirée puis
+   * réinsérée à la place `to`, ce qui suit ce que voit l'utilisateur pendant le
+   * glissement (contrairement à un échange deux à deux).
+   */
+  function reorderPhotos(from: number, to: number) {
+    if (from === to) return;
     setForm((current) => {
-      if (target < 0 || target >= current.photos.length) return current;
+      if (from < 0 || from >= current.photos.length) return current;
+      if (to < 0 || to >= current.photos.length) return current;
       const photos = current.photos.slice();
       const previewUrls = current.previewUrls.slice();
-      [photos[index], photos[target]] = [photos[target], photos[index]];
-      [previewUrls[index], previewUrls[target]] = [previewUrls[target], previewUrls[index]];
+      const [photo] = photos.splice(from, 1);
+      const [url] = previewUrls.splice(from, 1);
+      photos.splice(to, 0, photo);
+      previewUrls.splice(to, 0, url);
       return { ...current, photos, previewUrls };
     });
     setActivePhotoIndex((current) => {
-      if (target < 0 || target >= form.photos.length) return current;
-      if (current === index) return target;
-      if (current === target) return index;
+      if (current === from) return to;
+      if (from < current && to >= current) return current - 1;
+      if (from > current && to <= current) return current + 1;
       return current;
     });
   }
@@ -1749,6 +1771,21 @@ function AppContent({
       window.setTimeout(() => setJustSaved(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossible de valider cette étape.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Sortie du parcours en ligne : l'article repart en rayon à la boutique. */
+  async function sendArticleToShop() {
+    if (!editingId) return;
+    setError(null);
+    setBusy("workflow");
+    try {
+      await updateItem({ id: editingId, ...buildItemPayload() });
+      await moveToShop({ id: editingId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Remise en magasin impossible.");
     } finally {
       setBusy(null);
     }
@@ -2245,6 +2282,7 @@ function AppContent({
                     "en_cours_envoi",
                     "envoye",
                     "gagne",
+                    "magasin",
                     "archive",
                   ];
                   return (
@@ -2747,7 +2785,34 @@ function AppContent({
 
               <div className="grid grid-cols-5 gap-2">
                 {form.previewUrls.map((url, index) => (
-                  <div key={`${url}-${index}`} className="group relative">
+                  <div
+                    key={`${url}-${index}`}
+                    draggable
+                    onDragStart={(event) => {
+                      setPhotoDragIndex(index);
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(event) => {
+                      if (photoDragIndex === null) return;
+                      event.preventDefault();
+                      setPhotoDropIndex(index);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      if (photoDragIndex !== null) reorderPhotos(photoDragIndex, index);
+                      setPhotoDragIndex(null);
+                      setPhotoDropIndex(null);
+                    }}
+                    onDragEnd={() => {
+                      setPhotoDragIndex(null);
+                      setPhotoDropIndex(null);
+                    }}
+                    className={cn(
+                      "group relative cursor-grab active:cursor-grabbing",
+                      photoDragIndex === index && "opacity-40",
+                      photoDropIndex === index && photoDragIndex !== index && "ring-2 ring-[var(--primary)] rounded-xl",
+                    )}
+                  >
                     <button
                       type="button"
                       onClick={() => setActivePhotoIndex(index)}
@@ -2788,28 +2853,16 @@ function AppContent({
                     >
                       <X className="h-3 w-3" />
                     </button>
-                    {index > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => movePhoto(index, -1)}
-                        className="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-black/70 p-1 text-white transition"
-                        aria-label="Déplacer la photo vers la gauche"
-                        title="Déplacer vers la gauche"
-                      >
-                        <ChevronLeft className="h-3 w-3" />
-                      </button>
-                    ) : null}
-                    {index < form.previewUrls.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => movePhoto(index, 1)}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-black/70 p-1 text-white transition"
-                        aria-label="Déplacer la photo vers la droite"
-                        title="Déplacer vers la droite"
-                      >
-                        <ChevronRight className="h-3 w-3" />
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setEditingPhotoIndex(index)}
+                      className="absolute inset-x-1 bottom-1 flex items-center justify-center gap-1 rounded-md bg-black/70 py-1 text-[9px] font-semibold uppercase tracking-wide text-white opacity-0 transition group-hover:opacity-100"
+                      aria-label="Recadrer ou ajuster la photo"
+                      title="Recadrer ou ajuster"
+                    >
+                      <Crop className="h-3 w-3" />
+                      Recadrer
+                    </button>
                   </div>
                 ))}
                 <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] text-center text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]">
@@ -2882,6 +2935,20 @@ function AppContent({
                     </div>
                     {sheetItem.status === "stock_b" ? (
                       <p className="rounded-md bg-orange-50 px-3 py-2 text-sm text-orange-800">Cet article est dans le Stock B : il ne suit pas le parcours de vente en ligne.</p>
+                    ) : sheetItem.status === "magasin" ? (
+                      <div className="grid gap-3">
+                        <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                          Cet article est remis en vente à la boutique : il est retiré de Vinted et ne suit plus le parcours en ligne.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void returnToWorkflowStep("stock")}
+                          disabled={!canUpdate || busy === "workflow"}
+                          className="justify-self-start rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50"
+                        >
+                          Remettre en stock
+                        </button>
+                      </div>
                     ) : steps.map((step, index) => {
                       const done = current >= index;
                       const next = current + 1 === index;
@@ -2923,6 +2990,28 @@ function AppContent({
                         </div>
                       );
                     })}
+                    {/* Sortie du parcours : un invendu repart en rayon plutôt que
+                        de rester bloqué « en ligne » indéfiniment. */}
+                    {sheetItem.status !== "stock_b" &&
+                    sheetItem.status !== "magasin" &&
+                    workflowIndex(sheetItem.status) < 2 ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-[var(--border)] p-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--foreground)]">Remise en vente en magasin</p>
+                          <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                            L'article sort du parcours Vinted et repart en rayon à la boutique.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void sendArticleToShop()}
+                          disabled={!canUpdate || busy === "workflow"}
+                          className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50"
+                        >
+                          {busy === "workflow" ? "Enregistrement…" : "Remettre en magasin"}
+                        </button>
+                      </div>
+                    ) : null}
                   </section>
                 );
               })() : null}
@@ -3215,7 +3304,34 @@ function AppContent({
               {form.previewUrls.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                   {form.previewUrls.map((url, index) => (
-                    <div key={`${url}-${index}`} className="group relative">
+                    <div
+                      key={`${url}-${index}`}
+                      draggable
+                      onDragStart={(event) => {
+                        setPhotoDragIndex(index);
+                        event.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(event) => {
+                        if (photoDragIndex === null) return;
+                        event.preventDefault();
+                        setPhotoDropIndex(index);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (photoDragIndex !== null) reorderPhotos(photoDragIndex, index);
+                        setPhotoDragIndex(null);
+                        setPhotoDropIndex(null);
+                      }}
+                      onDragEnd={() => {
+                        setPhotoDragIndex(null);
+                        setPhotoDropIndex(null);
+                      }}
+                      className={cn(
+                        "group relative cursor-grab active:cursor-grabbing",
+                        photoDragIndex === index && "opacity-40",
+                        photoDropIndex === index && photoDragIndex !== index && "ring-2 ring-[var(--primary)] rounded-md",
+                      )}
+                    >
                       <button
                         type="button"
                         onClick={() => setEditingPhotoIndex(index)}
@@ -3264,28 +3380,6 @@ function AppContent({
                           <Star className="h-3.5 w-3.5" />
                         </button>
                       )}
-                      {index > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => movePhoto(index, -1)}
-                          className="absolute left-1 top-1/2 -translate-y-1/2 rounded-md bg-black/70 p-1 text-white"
-                          aria-label="Déplacer la photo vers la gauche"
-                          title="Déplacer vers la gauche"
-                        >
-                          <ChevronLeft className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
-                      {index < form.previewUrls.length - 1 ? (
-                        <button
-                          type="button"
-                          onClick={() => movePhoto(index, 1)}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-black/70 p-1 text-white"
-                          aria-label="Déplacer la photo vers la droite"
-                          title="Déplacer vers la droite"
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
                     </div>
                   ))}
                 </div>
