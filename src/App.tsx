@@ -16,6 +16,7 @@ import {
   List,
   Kanban,
   Loader2,
+  Mail,
   Menu,
   Moon,
   Package,
@@ -40,6 +41,7 @@ import { cn } from "./lib/cn";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { AppSwitcher } from "./components/AppSwitcher";
 import { HelpButton } from "./components/HelpButton";
+import { VintedMailbox } from "./components/VintedMailbox";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 import { KLYDE_GENDERS, klydeAverageWeightKg, klydeCategories, klydeSubcategories, klydeSubsubcategories } from "../convex/klydeTaxonomy";
@@ -53,7 +55,7 @@ type KlydeStatus =
   | "gagne"
   | "magasin"
   | "archive";
-type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique";
+type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted";
 
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
@@ -1219,6 +1221,10 @@ function AppContent({
   const canDelete = can("klyde:stock", "delete");
   const canAnalyze = can("klyde:stock", "analyze");
   const canPublish = canUpdate || can("klyde:boutique", "manage");
+  // Boîte Gmail Vinted : lecture, traitement des emails, connexion du compte.
+  const canReadVinted = can("klyde:vinted", "read");
+  const canUpdateVinted = can("klyde:vinted", "update");
+  const canManageVinted = can("klyde:vinted", "manage");
 
   useEffect(() => { void ensurePoints({}); }, [ensurePoints]);
 
@@ -2156,6 +2162,7 @@ function AppContent({
           {navButton("prolonges", <ArrowRight className="h-4 w-4" />, "Articles prolongés")}
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
           {navButton("boutique", <ShoppingBag className="h-4 w-4" />, "Boutique")}
+          {canReadVinted ? navButton("vinted", <Mail className="h-4 w-4" />, "Emails Vinted") : null}
         </nav>
         <div className="space-y-3 border-t border-[var(--border)] p-4">
           <button
@@ -2193,7 +2200,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : "Suivi"}
           </h1>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {canCreate ? (
@@ -2229,7 +2236,7 @@ function AppContent({
           </div>
         </header>
 
-        <div className="grid grid-cols-5 border-b border-[var(--border)] md:hidden">
+        <div className="grid grid-cols-6 border-b border-[var(--border)] md:hidden">
           <button
             type="button"
             onClick={() => setActiveTab("stock")}
@@ -2247,10 +2254,13 @@ function AppContent({
           <button type="button" onClick={() => setActiveTab("stock_b")} className={cn("py-3 text-sm font-medium", activeTab === "stock_b" && "bg-[var(--muted)]")}>Stock B</button>
           <button type="button" onClick={() => setActiveTab("prolonges")} className={cn("py-3 text-sm font-medium", activeTab === "prolonges" && "bg-[var(--muted)]")}>Prolongés</button>
           <button type="button" onClick={() => setActiveTab("boutique")} className={cn("py-3 text-sm font-medium", activeTab === "boutique" && "bg-[var(--muted)]")}>Boutique</button>
+          {canReadVinted ? (
+            <button type="button" onClick={() => setActiveTab("vinted")} className={cn("py-3 text-sm font-medium", activeTab === "vinted" && "bg-[var(--muted)]")}>Vinted</button>
+          ) : null}
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
-          {activeTab !== "suivi" && activeTab !== "boutique" ? (
+          {activeTab !== "suivi" && activeTab !== "boutique" && activeTab !== "vinted" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -2390,7 +2400,9 @@ function AppContent({
             </div>
           )}
 
-          {activeTab === "boutique" ? (
+          {activeTab === "vinted" ? (
+            <VintedMailbox canUpdate={canUpdateVinted} canManage={canManageVinted} />
+          ) : activeTab === "boutique" ? (
             <StorefrontSettings canManage={canPublish} />
           ) : items === undefined ? (
             <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
