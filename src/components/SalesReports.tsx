@@ -9,6 +9,13 @@ const MONTHS = [
   "juillet", "août", "septembre", "octobre", "novembre", "décembre",
 ];
 
+/** Nom porté par le rapport : une structure, ou les deux réunies. */
+function structureName(outlet: "klyd" | "mobifrip" | null) {
+  if (outlet === "mobifrip") return "Mobifrip";
+  if (outlet === "klyd") return "Klyd";
+  return "Klyd & Mobifrip";
+}
+
 function euro(value: number) {
   return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 }
@@ -31,7 +38,10 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState<number | null>(new Date().getMonth());
-  const report = useQuery(api.klydeReports.salesReport, { year, month });
+  // Mobifrip par défaut : c'est l'enseigne qui vend, et un rapport doit porter
+  // le nom d'une structure, pas celui de l'outil.
+  const [outlet, setOutlet] = useState<"klyd" | "mobifrip" | null>("mobifrip");
+  const report = useQuery(api.klydeReports.salesReport, { year, month, outlet });
   const [shareOpen, setShareOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -84,6 +94,28 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
           </select>
         </label>
 
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] p-1">
+          {([
+            ["mobifrip", "Mobifrip"],
+            ["klyd", "Klyd"],
+            [null, "Les deux"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setOutlet(value)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-semibold transition-colors",
+                outlet === value
+                  ? "bg-[var(--primary)] text-white"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {canShare ? (
           <button
             type="button"
@@ -112,7 +144,9 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
               <p className="mt-1 text-2xl font-black text-[var(--primary)]">
                 {euro(report.revenue)}
               </p>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">{report.label}</p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                {structureName(outlet)} · {report.label}
+              </p>
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
               <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -131,15 +165,19 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
                 Panier moyen
               </p>
               <p className="mt-1 text-2xl font-black">{euro(report.averageBasket)}</p>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                Klyd {euro(report.byOutlet.klyd)} · Mobifrip {euro(report.byOutlet.mobifrip)}
-              </p>
+              {outlet === null ? (
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  Klyd {euro(report.byOutlet.klyd)} · Mobifrip {euro(report.byOutlet.mobifrip)}
+                </p>
+              ) : null}
             </div>
           </div>
 
           {/* ── Répartition mensuelle ─────────────────────────────────────── */}
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
-            <h2 className="text-sm font-semibold">Chiffre d'affaires mois par mois · {year}</h2>
+            <h2 className="text-sm font-semibold">
+              Chiffre d'affaires mois par mois · {structureName(outlet)} · {year}
+            </h2>
             <ul className="mt-3 space-y-1.5">
               {report.monthly.map((amount, index) => (
                 <li
@@ -227,6 +265,7 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
         <ShareReportDialog
           year={year}
           month={month}
+          outlet={outlet}
           onClose={() => setShareOpen(false)}
           onSent={(to, label) => setNotice(`Rapport ${label} envoyé à ${to}.`)}
         />
@@ -239,15 +278,17 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
 function ShareReportDialog({
   year,
   month,
+  outlet,
   onClose,
   onSent,
 }: {
   year: number;
   month: number | null;
+  outlet: "klyd" | "mobifrip" | null;
   onClose: () => void;
   onSent: (to: string, label: string) => void;
 }) {
-  const draft = useQuery(api.klydeReports.emailDraft, { year, month });
+  const draft = useQuery(api.klydeReports.emailDraft, { year, month, outlet });
   const sendByEmail = useAction(api.klydeReports.sendByEmail);
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
@@ -266,7 +307,7 @@ function ShareReportDialog({
     setSending(true);
     setError(null);
     try {
-      const result = await sendByEmail({ to, year, month, subject, message });
+      const result = await sendByEmail({ to, year, month, outlet, subject, message });
       onSent(result.sentTo, result.label);
       onClose();
     } catch (e) {
@@ -283,7 +324,7 @@ function ShareReportDialog({
           <div>
             <h2 className="text-base font-semibold">Partager le rapport</h2>
             <p className="text-sm text-[var(--muted-foreground)]">
-              {draft?.label ?? "Préparation…"}
+              {structureName(outlet)} · {draft?.label ?? "Préparation…"}
             </p>
           </div>
           <button
