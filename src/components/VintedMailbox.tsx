@@ -3,7 +3,9 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Check,
+  ExternalLink,
   Link2,
+  MessageSquare,
   Loader2,
   Mail,
   Paperclip,
@@ -14,28 +16,28 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "../lib/cn";
 
-/** Natures d'emails Vinted, dans l'ordre d'importance opérationnelle. */
+/**
+ * Natures d'emails Vinted importées, dans l'ordre d'importance opérationnelle.
+ * Les notifications de messagerie ne sont pas stockées : rien à filtrer ici.
+ */
 const KINDS = [
   { value: "vente", label: "Ventes" },
   { value: "bordereau", label: "Bordereaux" },
   { value: "expedition", label: "Expéditions" },
-  { value: "paiement", label: "Paiements" },
   { value: "offre", label: "Offres" },
-  { value: "message", label: "Messages" },
-  { value: "autre", label: "Autres" },
 ] as const;
 
 type Kind = (typeof KINDS)[number]["value"];
 
-const KIND_STYLES: Record<Kind, string> = {
+const KIND_STYLES: Record<string, string> = {
   vente: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
   bordereau: "bg-sky-500/10 text-sky-600 border-sky-500/30",
   expedition: "bg-indigo-500/10 text-indigo-600 border-indigo-500/30",
-  paiement: "bg-amber-500/10 text-amber-600 border-amber-500/30",
   offre: "bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/30",
-  message: "bg-slate-500/10 text-slate-600 border-slate-500/30",
-  autre: "bg-slate-500/10 text-slate-500 border-slate-500/30",
 };
+
+/** Repli pour une nature héritée d'un import antérieur. */
+const NEUTRAL_KIND_STYLE = "bg-slate-500/10 text-slate-500 border-slate-500/30";
 
 function formatDate(ms: number) {
   return new Date(ms).toLocaleString("fr-FR", {
@@ -178,9 +180,6 @@ export function VintedMailbox({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">Boîte Gmail connectée</h2>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Accès en lecture seule aux emails Vinted, via Google OAuth.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canUpdate && accounts.length > 0 ? (
@@ -218,8 +217,7 @@ export function VintedMailbox({
 
         {accounts.length === 0 ? (
           <p className="mt-4 rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center text-sm text-[var(--muted-foreground)]">
-            Aucune boîte connectée. La connexion ouvre l'écran de consentement Google
-            et n'autorise que la lecture des emails.
+            Aucune boîte connectée.
           </p>
         ) : (
           <ul className="mt-4 grid gap-2">
@@ -354,7 +352,7 @@ export function VintedMailbox({
                     <span
                       className={cn(
                         "rounded-full border px-2 py-0.5 text-xs font-semibold",
-                        KIND_STYLES[email.kind],
+                        KIND_STYLES[email.kind] ?? NEUTRAL_KIND_STYLE,
                       )}
                     >
                       {KINDS.find((k) => k.value === email.kind)?.label ?? email.kind}
@@ -419,6 +417,28 @@ export function VintedMailbox({
               ) : null}
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {email.conversationUrl ? (
+                  <a
+                    href={email.conversationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Conversation Vinted
+                  </a>
+                ) : null}
+                {email.itemUrl ? (
+                  <a
+                    href={email.itemUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Annonce
+                  </a>
+                ) : null}
                 {email.labelUrl ? (
                   <a
                     href={email.labelUrl}
