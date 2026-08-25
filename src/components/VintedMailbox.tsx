@@ -360,6 +360,11 @@ export function VintedMailbox({
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {formatDate(email.sentAt)}
                     </span>
+                    {email.forwardedBy ? (
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        transféré par {email.forwardedBy.replace(/.*<|>.*/g, "") || email.forwardedBy}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-1 truncate text-sm font-semibold">{email.subject}</p>
                   {email.itemTitle ? (
