@@ -96,3 +96,14 @@ textarea {
 .klyde-gallery-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* Rangées d'onglets défilantes : la barre de défilement mangerait la moitié
+   de la hauteur utile sur mobile, et le geste tactile suffit à naviguer. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

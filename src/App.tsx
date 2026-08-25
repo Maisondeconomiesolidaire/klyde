@@ -2149,7 +2149,7 @@ function AppContent({
   }
 
   return (
-    <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]">
       <HelpButton />
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] md:flex">
         <div className="flex items-center justify-between gap-2 p-4">
@@ -2195,14 +2195,14 @@ function AppContent({
       </aside>
 
       <div className="min-w-0 flex-1 md:pl-56">
-        <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 py-3 md:px-6">
+        <header className="flex min-h-16 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[var(--border)] bg-[var(--background)] px-3 py-3 md:flex-nowrap md:px-6">
           <div className="shrink-0 md:hidden">
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
             {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : "Suivi"}
           </h1>
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {canCreate ? (
               <button
                 type="button"
@@ -2236,27 +2236,35 @@ function AppContent({
           </div>
         </header>
 
-        <div className="grid grid-cols-6 border-b border-[var(--border)] md:hidden">
-          <button
-            type="button"
-            onClick={() => setActiveTab("stock")}
-            className={cn("py-3 text-sm font-medium", activeTab === "stock" && "bg-[var(--muted)]")}
-          >
-            Stock
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("suivi")}
-            className={cn("py-3 text-sm font-medium", activeTab === "suivi" && "bg-[var(--muted)]")}
-          >
-            Suivi
-          </button>
-          <button type="button" onClick={() => setActiveTab("stock_b")} className={cn("py-3 text-sm font-medium", activeTab === "stock_b" && "bg-[var(--muted)]")}>Stock B</button>
-          <button type="button" onClick={() => setActiveTab("prolonges")} className={cn("py-3 text-sm font-medium", activeTab === "prolonges" && "bg-[var(--muted)]")}>Prolongés</button>
-          <button type="button" onClick={() => setActiveTab("boutique")} className={cn("py-3 text-sm font-medium", activeTab === "boutique" && "bg-[var(--muted)]")}>Boutique</button>
-          {canReadVinted ? (
-            <button type="button" onClick={() => setActiveTab("vinted")} className={cn("py-3 text-sm font-medium", activeTab === "vinted" && "bg-[var(--muted)]")}>Vinted</button>
-          ) : null}
+        {/*
+          Barre d'onglets mobile. Une grille à colonnes fixes tronquait les
+          libellés dès qu'un onglet s'ajoutait (et laissait un trou quand un
+          onglet était masqué par les droits) : on défile horizontalement, les
+          libellés restent entiers quel que soit leur nombre.
+        */}
+        <div className="no-scrollbar flex overflow-x-auto border-b border-[var(--border)] md:hidden">
+          {([
+            ["stock", "Stock", true],
+            ["suivi", "Suivi", true],
+            ["stock_b", "Stock B", true],
+            ["prolonges", "Prolongés", true],
+            ["boutique", "Boutique", true],
+            ["vinted", "Emails Vinted", canReadVinted],
+          ] as const)
+            .filter(([, , visible]) => visible)
+            .map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "shrink-0 whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-sm font-medium",
+                  activeTab === tab && "border-[var(--primary)] bg-[var(--muted)]",
+                )}
+              >
+                {label}
+              </button>
+            ))}
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
@@ -2795,7 +2803,7 @@ function AppContent({
                 ) : null}
               </div>
 
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                 {form.previewUrls.map((url, index) => (
                   <div
                     key={`${url}-${index}`}
@@ -3745,7 +3753,7 @@ function BoutiqueHeader() {
         onMouseLeave={() => setOpenMenu(null)}
         className="relative border-t border-[#1f1b18]/10 bg-white px-3 text-center text-[11px] font-medium tracking-[0.04em] text-[#1f1b18]/70"
       >
-        <div className="mx-auto flex max-w-[96rem] items-center gap-1 overflow-x-auto sm:justify-center">
+        <div className="no-scrollbar mx-auto flex max-w-[96rem] items-center gap-1 overflow-x-auto sm:justify-center">
           <button
             type="button"
             onClick={() => goTo("/boutique")}
@@ -4550,7 +4558,7 @@ function ProductDetailPage({
 
         <aside className="order-3 p-6 sm:p-10 lg:p-8 xl:p-12">
           <div className="lg:sticky lg:top-32">
-            <div className="flex gap-2 overflow-x-auto pb-5">
+            <div className="no-scrollbar flex gap-2 overflow-x-auto pb-5">
               {item.photoUrls.map((url, index) => (
                 <button key={url} type="button" onClick={() => selectPhoto(index)} className={cn("h-20 w-16 shrink-0 overflow-hidden border bg-[#fafafa]", selectedPhoto === index ? "border-[#1f1b18]" : "border-transparent")}>
                   <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -4618,7 +4626,7 @@ function ProductDetailPage({
                 </>
               ) : null}
             </div>
-            <div className="mt-4 flex items-center justify-center gap-2 overflow-x-auto pb-1">
+            <div className="no-scrollbar mt-4 flex items-center justify-center gap-2 overflow-x-auto pb-1">
               {item.photoUrls.map((url, index) => (
                 <button
                   key={url}
