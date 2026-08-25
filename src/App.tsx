@@ -2268,7 +2268,12 @@ function AppContent({
         </div>
 
         <main className="p-3 sm:p-4 md:p-6">
-          {activeTab !== "suivi" && activeTab !== "boutique" && activeTab !== "vinted" ? (
+          {/*
+            L'onglet « Emails Vinted » porte ses propres filtres : ni la
+            recherche d'article ni le bascule « En cours / Gagné » n'agissent
+            sur son contenu.
+          */}
+          {activeTab === "vinted" ? null : activeTab !== "suivi" && activeTab !== "boutique" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
