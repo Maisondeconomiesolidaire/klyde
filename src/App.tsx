@@ -3,6 +3,7 @@ import { SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
+  BarChart3,
   ArrowRight,
   Check,
   ChevronDown,
@@ -42,6 +43,7 @@ import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { AppSwitcher } from "./components/AppSwitcher";
 import { HelpButton } from "./components/HelpButton";
 import { VintedMailbox } from "./components/VintedMailbox";
+import { SalesReports } from "./components/SalesReports";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 import { KLYDE_GENDERS, klydeAverageWeightKg, klydeCategories, klydeSubcategories, klydeSubsubcategories } from "../convex/klydeTaxonomy";
@@ -55,7 +57,7 @@ type KlydeStatus =
   | "gagne"
   | "magasin"
   | "archive";
-type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted";
+type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted" | "rapports";
 
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
@@ -1225,6 +1227,9 @@ function AppContent({
   const canReadVinted = can("klyde:vinted", "read");
   const canUpdateVinted = can("klyde:vinted", "update");
   const canManageVinted = can("klyde:vinted", "manage");
+  // Rapports de ventes : lecture du chiffre d'affaires, partage par email.
+  const canReadReports = can("klyde:rapports", "read");
+  const canShareReports = can("klyde:rapports", "share");
 
   useEffect(() => { void ensurePoints({}); }, [ensurePoints]);
 
@@ -2163,6 +2168,7 @@ function AppContent({
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
           {navButton("boutique", <ShoppingBag className="h-4 w-4" />, "Boutique")}
           {canReadVinted ? navButton("vinted", <Mail className="h-4 w-4" />, "Emails Vinted") : null}
+          {canReadReports ? navButton("rapports", <BarChart3 className="h-4 w-4" />, "Rapports") : null}
         </nav>
         <div className="space-y-3 border-t border-[var(--border)] p-4">
           <button
@@ -2200,7 +2206,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "rapports" ? "Rapports" : "Suivi"}
           </h1>
           <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {canCreate ? (
@@ -2250,6 +2256,7 @@ function AppContent({
             ["prolonges", "Prolongés", true],
             ["boutique", "Boutique", true],
             ["vinted", "Emails Vinted", canReadVinted],
+            ["rapports", "Rapports", canReadReports],
           ] as const)
             .filter(([, , visible]) => visible)
             .map(([tab, label]) => (
@@ -2273,7 +2280,7 @@ function AppContent({
             recherche d'article ni le bascule « En cours / Gagné » n'agissent
             sur son contenu.
           */}
-          {activeTab === "vinted" ? null : activeTab !== "suivi" && activeTab !== "boutique" ? (
+          {activeTab === "vinted" || activeTab === "rapports" ? null : activeTab !== "suivi" && activeTab !== "boutique" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -2413,7 +2420,9 @@ function AppContent({
             </div>
           )}
 
-          {activeTab === "vinted" ? (
+          {activeTab === "rapports" ? (
+            <SalesReports canShare={canShareReports} />
+          ) : activeTab === "vinted" ? (
             <VintedMailbox canUpdate={canUpdateVinted} canManage={canManageVinted} />
           ) : activeTab === "boutique" ? (
             <StorefrontSettings canManage={canPublish} />
