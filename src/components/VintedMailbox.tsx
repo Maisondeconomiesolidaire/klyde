@@ -10,7 +10,6 @@ import {
   Loader2,
   Mail,
   Paperclip,
-  ReceiptText,
   RefreshCw,
   Send,
   Unplug,
@@ -82,7 +81,6 @@ export function VintedMailbox({
   const connectUrl = useAction(api.klydeGmail.connectUrl);
   const syncNow = useAction(api.klydeGmail.syncNow);
   const disconnect = useAction(api.klydeGmail.disconnect);
-  const generateInvoice = useAction(api.klydeInvoices.generate);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [invoiceEmailFor, setInvoiceEmailFor] = useState<Id<"klydeVintedEmails"> | null>(null);
@@ -468,33 +466,11 @@ export function VintedMailbox({
                     {email.invoiceSentAt ? "Renvoyer au client" : "Envoyer au client"}
                   </button>
                 ) : null}
-                {canUpdate && email.kind === "vente" ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run(`invoice-${email._id}`, async () => {
-                        const result = await generateInvoice({ emailId: email._id });
-                        setNotice({
-                          tone: "ok",
-                          message: `Facture ${result.invoiceNumber} générée.`,
-                        });
-                      })
-                    }
-                    disabled={busy === `invoice-${email._id}`}
-                    className={cn(
-                      "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-60",
-                      email.invoiceUrl
-                        ? "border border-[var(--border)] text-[var(--muted-foreground)]"
-                        : "bg-[var(--primary)] text-white",
-                    )}
-                  >
-                    {busy === `invoice-${email._id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ReceiptText className="h-4 w-4" />
-                    )}
-                    {email.invoiceUrl ? "Regénérer la facture" : "Générer la facture"}
-                  </button>
+                {email.kind === "vente" && !email.invoiceUrl ? (
+                  <span className="flex items-center gap-2 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-sm text-[var(--muted-foreground)]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Facture en préparation
+                  </span>
                 ) : null}
                 {email.labelUrl ? (
                   <a
