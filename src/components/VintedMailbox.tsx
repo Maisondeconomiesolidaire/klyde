@@ -333,6 +333,16 @@ export function VintedMailbox({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
+                    {email.outlet ? (
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs font-semibold text-white",
+                          email.outlet === "mobifrip" ? "bg-orange-500" : "bg-[var(--primary)]",
+                        )}
+                      >
+                        {email.outlet === "mobifrip" ? "Mobifrip" : "Klyd"}
+                      </span>
+                    ) : null}
                     <span
                       className={cn(
                         "rounded-full border px-2 py-0.5 text-xs font-semibold",
@@ -344,23 +354,6 @@ export function VintedMailbox({
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {formatDate(email.sentAt)}
                     </span>
-                    {email.outlet ? (
-                      <span
-                        className={cn(
-                          "rounded-full border px-2 py-0.5 text-xs font-semibold",
-                          email.outlet === "mobifrip"
-                            ? "border-orange-500/30 bg-orange-500/10 text-orange-600"
-                            : "border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)]",
-                        )}
-                      >
-                        {email.outlet === "mobifrip" ? "Mobifrip" : "Klyd"}
-                      </span>
-                    ) : null}
-                    {email.forwardedBy ? (
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        transféré par {email.forwardedBy.replace(/.*<|>.*/g, "") || email.forwardedBy}
-                      </span>
-                    ) : null}
                   </div>
                   <p className="mt-1 truncate text-sm font-semibold">{email.subject}</p>
                   {email.itemTitle ? (
@@ -419,9 +412,6 @@ export function VintedMailbox({
                     <p className="text-xs text-[var(--muted-foreground)]">
                       {email.matchedItem.sku ? `${email.matchedItem.sku} · ` : ""}
                       Article rattaché
-                      {email.matchConfidence !== undefined && email.matchConfidence < 1
-                        ? ` · confiance ${Math.round(email.matchConfidence * 100)} %`
-                        : ""}
                     </p>
                   </div>
                 </div>
