@@ -12,9 +12,12 @@ import {
   Paperclip,
   ReceiptText,
   RefreshCw,
+  Send,
   Unplug,
+  X,
 } from "lucide-react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "../lib/cn";
 
 /**
@@ -82,6 +85,7 @@ export function VintedMailbox({
   const generateInvoice = useAction(api.klydeInvoices.generate);
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [invoiceEmailFor, setInvoiceEmailFor] = useState<Id<"klydeVintedEmails"> | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
 
   // Retour de Google : `?gmail=ok|error` posé par la route HTTP Convex.
@@ -454,6 +458,16 @@ export function VintedMailbox({
                     Voir la facture{email.invoiceNumber ? ` ${email.invoiceNumber}` : ""}
                   </a>
                 ) : null}
+                {canUpdate && email.kind === "vente" && email.invoiceUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceEmailFor(email._id)}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium"
+                  >
+                    <Send className="h-4 w-4" />
+                    {email.invoiceSentAt ? "Renvoyer au client" : "Envoyer au client"}
+                  </button>
+                ) : null}
                 {canUpdate && email.kind === "vente" ? (
                   <button
                     type="button"
@@ -507,10 +521,198 @@ export function VintedMailbox({
                   ) : null,
                 )}
               </div>
+              {email.invoiceSentAt ? (
+                <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                  Facture envoyée le {formatDate(email.invoiceSentAt)}
+                  {email.invoiceSentTo ? ` à ${email.invoiceSentTo}` : ""}.
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
+
+      {invoiceEmailFor ? (
+        <InvoiceEmailDialog
+          emailId={invoiceEmailFor}
+          onClose={() => setInvoiceEmailFor(null)}
+          onSent={(to) => setNotice({ tone: "ok", message: `Facture envoyée à ${to}.` })}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Confirmation avant envoi au client. Le vendeur ne compose pas l'email : il
+ * relit un message type et l'ajuste. L'ossature (en-tête Mobifrip,
+ * récapitulatif, pièce jointe) est ajoutée côté serveur, donc un texte
+ * raccourci reste un email complet.
+ */
+function InvoiceEmailDialog({
+  emailId,
+  onClose,
+  onSent,
+}: {
+  emailId: Id<"klydeVintedEmails">;
+  onClose: () => void;
+  onSent: (to: string) => void;
+}) {
+  const draft = useQuery(api.klydeInvoices.emailDraft, { emailId });
+  const sendByEmail = useAction(api.klydeInvoices.sendByEmail);
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (loaded || !draft) return;
+    setLoaded(true);
+    setTo(draft.to);
+    setSubject(draft.subject);
+    setMessage(draft.message);
+  }, [draft, loaded]);
+
+  const reset = () => {
+    if (!draft) return;
+    setSubject(draft.subject);
+    setMessage(draft.message);
+  };
+
+  const send = async () => {
+    setSending(true);
+    setError(null);
+    try {
+      const result = await sendByEmail({ emailId, to, subject, message });
+      onSent(result.sentTo);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-[var(--border)] bg-[var(--card)] p-5 sm:max-w-xl sm:rounded-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Envoyer la facture au client</h2>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Relisez le message avant l'envoi.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            aria-label="Fermer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {draft === undefined ? (
+          <div className="mt-6 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Préparation du message
+          </div>
+        ) : draft === null ? (
+          <p className="mt-6 text-sm text-red-600">Email introuvable.</p>
+        ) : (
+          <div className="mt-5 space-y-4">
+            {draft.sentAt ? (
+              <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                Déjà envoyée le {formatDate(draft.sentAt)}
+                {draft.sentTo ? ` à ${draft.sentTo}` : ""}.
+              </p>
+            ) : null}
+
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Destinataire</span>
+              <input
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                placeholder="client@email.fr"
+                className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5 text-sm outline-none"
+              />
+              {!draft.to ? (
+                <span className="text-xs text-amber-600">
+                  Aucune adresse trouvée dans l'email Vinted : saisissez-la.
+                </span>
+              ) : null}
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">Objet</span>
+              <input
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5 text-sm outline-none"
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center justify-between gap-2 text-sm font-medium">
+                Message
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="text-xs font-medium text-[var(--muted-foreground)] underline underline-offset-2"
+                >
+                  Rétablir le texte type
+                </button>
+              </span>
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                rows={9}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5 py-3 text-sm leading-relaxed outline-none"
+              />
+            </label>
+
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-3 text-sm">
+              <p className="font-medium">Ajouté automatiquement au message</p>
+              <ul className="mt-1.5 space-y-1 text-[var(--muted-foreground)]">
+                <li>En-tête Mobifrip · 4 rue de la Prairie · 60650 Lachapelle-aux-Pots</li>
+                <li>Récapitulatif : facture {draft.invoiceNumber}, article et montant</li>
+                <li className="flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  Facture-{draft.invoiceNumber}.pdf en pièce jointe
+                </li>
+              </ul>
+            </div>
+
+            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void send()}
+                disabled={sending || !to.trim()}
+                className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {sending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Envoyer la facture
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
