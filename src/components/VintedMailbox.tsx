@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Check,
@@ -13,7 +13,6 @@ import {
   Unplug,
 } from "lucide-react";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "../lib/cn";
 
 /**
@@ -69,19 +68,15 @@ export function VintedMailbox({
   const accounts = useQuery(api.klydeGmail.listAccounts);
   const stats = useQuery(api.klydeGmail.stats);
   const [kind, setKind] = useState<Kind | "">("");
-  const [onlyPending, setOnlyPending] = useState(false);
   const [search, setSearch] = useState("");
   const emails = useQuery(api.klydeGmail.listEmails, {
     kind: kind || undefined,
-    onlyPending,
     searchText: search || undefined,
   });
 
   const connectUrl = useAction(api.klydeGmail.connectUrl);
   const syncNow = useAction(api.klydeGmail.syncNow);
   const disconnect = useAction(api.klydeGmail.disconnect);
-  const setHandled = useMutation(api.klydeGmail.setHandled);
-  const applySale = useMutation(api.klydeGmail.applySaleToItem);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
@@ -269,8 +264,8 @@ export function VintedMailbox({
             <p className="text-lg font-black">{stats.total}</p>
           </div>
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3">
-            <p className="text-xs text-[var(--muted-foreground)]">À traiter</p>
-            <p className="text-lg font-black">{stats.pending}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Rattachés au stock</p>
+            <p className="text-lg font-black">{stats.matched}</p>
           </div>
           <div className="rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
             <p className="text-xs text-[var(--muted-foreground)]">Ventes détectées</p>
@@ -309,14 +304,6 @@ export function VintedMailbox({
             ) : null}
           </button>
         ))}
-        <label className="ml-auto flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={onlyPending}
-            onChange={(event) => setOnlyPending(event.target.checked)}
-          />
-          À traiter uniquement
-        </label>
       </div>
 
       <input
@@ -341,10 +328,7 @@ export function VintedMailbox({
           {emails.map((email) => (
             <li
               key={email._id}
-              className={cn(
-                "rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4",
-                email.handled && "opacity-60",
-              )}
+              className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -360,6 +344,18 @@ export function VintedMailbox({
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {formatDate(email.sentAt)}
                     </span>
+                    {email.outlet ? (
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-xs font-semibold",
+                          email.outlet === "mobifrip"
+                            ? "border-orange-500/30 bg-orange-500/10 text-orange-600"
+                            : "border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)]",
+                        )}
+                      >
+                        {email.outlet === "mobifrip" ? "Mobifrip" : "Klyd"}
+                      </span>
+                    ) : null}
                     {email.forwardedBy ? (
                       <span className="text-xs text-[var(--muted-foreground)]">
                         transféré par {email.forwardedBy.replace(/.*<|>.*/g, "") || email.forwardedBy}
@@ -406,19 +402,29 @@ export function VintedMailbox({
               </dl>
 
               {email.matchedItem ? (
-                <p className="mt-3 flex items-center gap-2 text-sm">
-                  <Link2 className="h-4 w-4 text-[var(--muted-foreground)]" />
-                  Article rattaché :{" "}
-                  <span className="font-semibold">{email.matchedItem.title}</span>
-                  {email.matchedItem.sku ? (
-                    <span className="text-[var(--muted-foreground)]">({email.matchedItem.sku})</span>
-                  ) : null}
-                  {email.matchConfidence !== undefined && email.matchConfidence < 1 ? (
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      confiance {Math.round(email.matchConfidence * 100)} %
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--muted)]/40 p-2">
+                  {email.matchedItem.photoUrl ? (
+                    <img
+                      src={email.matchedItem.photoUrl}
+                      alt=""
+                      className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[var(--border)]">
+                      <Link2 className="h-4 w-4 text-[var(--muted-foreground)]" />
                     </span>
-                  ) : null}
-                </p>
+                  )}
+                  <div className="min-w-0 text-sm">
+                    <p className="truncate font-semibold">{email.matchedItem.title}</p>
+                    <p className="text-xs text-[var(--muted-foreground)]">
+                      {email.matchedItem.sku ? `${email.matchedItem.sku} · ` : ""}
+                      Article rattaché
+                      {email.matchConfidence !== undefined && email.matchConfidence < 1
+                        ? ` · confiance ${Math.round(email.matchConfidence * 100)} %`
+                        : ""}
+                    </p>
+                  </div>
+                </div>
               ) : null}
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -468,41 +474,6 @@ export function VintedMailbox({
                     </a>
                   ) : null,
                 )}
-                {canUpdate && email.kind === "vente" && email.matchedItem ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run(`apply-${email._id}`, async () => {
-                        await applySale({ emailId: email._id as Id<"klydeVintedEmails"> });
-                        setNotice({
-                          tone: "ok",
-                          message: "Article passé en « gagné » avec le prix encaissé.",
-                        });
-                      })
-                    }
-                    disabled={busy === `apply-${email._id}`}
-                    className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    Marquer l'article vendu
-                  </button>
-                ) : null}
-                {canUpdate ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run(`handled-${email._id}`, async () => {
-                        await setHandled({
-                          emailId: email._id as Id<"klydeVintedEmails">,
-                          handled: !email.handled,
-                        });
-                      })
-                    }
-                    disabled={busy === `handled-${email._id}`}
-                    className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium"
-                  >
-                    {email.handled ? "Remettre à traiter" : "Marquer traité"}
-                  </button>
-                ) : null}
               </div>
             </li>
           ))}
