@@ -1288,6 +1288,23 @@ function AppContent({
     () => tabItems.reduce((total, item) => total + (item.price ?? 0) * item.quantity, 0),
     [tabItems],
   );
+  /**
+   * Total réellement encaissé sur la sélection : le prix affiché sert de repli
+   * pour un article gagné dont le prix de vente n'a pas été saisi, sinon il
+   * compterait pour zéro et minorerait le total.
+   */
+  const soldValue = useMemo(
+    () =>
+      tabItems.reduce(
+        (total, item) => total + (item.actualSalePrice ?? item.price ?? 0) * item.quantity,
+        0,
+      ),
+    [tabItems],
+  );
+  /** Écart entre le prix affiché et le prix obtenu (négatif = vendu moins cher). */
+  const soldDelta = soldValue - availableStockValue;
+  /** Le comparatif n'a de sens que sur des articles effectivement vendus. */
+  const showSoldValue = selectedStatus === "gagne";
   const locationOptions = useMemo(
     () =>
       Array.from(new Set(allItems.map((item) => item.location ?? "").filter(Boolean))).sort((a, b) =>
@@ -2439,15 +2456,30 @@ function AppContent({
             ) : (
               <>
                 {activeTab === "stock" ? (
-                  <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                  <div className={cn("mb-4 grid gap-3 sm:grid-cols-2", showSoldValue && "lg:grid-cols-3")}>
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
                       <span className="text-sm font-semibold">Poids estimé disponible</span>
                       <span className="text-lg font-black text-[var(--primary)]">{availableWeightKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg</span>
                     </div>
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
-                      <span className="text-sm font-semibold">Valeur du stock</span>
+                      <span className="text-sm font-semibold">{showSoldValue ? "Valeur au prix affiché" : "Valeur du stock"}</span>
                       <span className="text-lg font-black text-[var(--primary)]">{availableStockValue.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</span>
                     </div>
+                    {showSoldValue ? (
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3">
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold">Réellement encaissé</span>
+                          {availableStockValue > 0 ? (
+                            <span className="block text-xs text-[var(--muted-foreground)]">
+                              {soldDelta >= 0 ? "+" : "−"}
+                              {Math.abs(soldDelta).toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}
+                              {" "}({Math.round((soldDelta / availableStockValue) * 100)} %) vs prix affiché
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 text-lg font-black text-emerald-600">{soldValue.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</span>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {canPublish && selectedItems.length > 0 ? (
