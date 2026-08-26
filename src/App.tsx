@@ -2,6 +2,8 @@ import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "reac
 import { SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   BarChart3,
   ArrowRight,
@@ -57,7 +59,7 @@ type KlydeStatus =
   | "gagne"
   | "magasin"
   | "archive";
-type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted" | "rapports";
+type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted" | "rapports" | "archives";
 
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
@@ -1197,6 +1199,7 @@ function AppContent({
   const createItem = useMutation(api.klyde.create);
   const updateItem = useMutation(api.klyde.update);
   const updateStatus = useMutation(api.klyde.updateStatus);
+  const setArchived = useMutation(api.klyde.setArchived);
   const advanceWorkflow = useMutation(api.klyde.advanceWorkflow);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const moveToStockB = useMutation(api.klyde.moveToStockB);
@@ -1237,15 +1240,24 @@ function AppContent({
     api.klyde.list,
     canRead ? { searchText: searchText || undefined } : "skip",
   );
+  // Les archives vivent hors du stock : elles ne sont chargées qu'à l'ouverture
+  // de leur page, avec la même recherche que le reste de l'app.
+  const archivedItems = useQuery(
+    api.klyde.list,
+    canRead && activeTab === "archives"
+      ? { searchText: searchText || undefined, archived: true }
+      : "skip",
+  );
 
   const allItems = items ?? [];
   const selectedItems = useMemo(
     () => allItems.filter((item) => selectedItemIds.has(item._id)),
     [allItems, selectedItemIds],
   );
-  const visibleItems = useMemo(
+  /** Filtres de la barre latérale, partagés par le stock et les archives. */
+  const matchesFilters = useMemo(
     () =>
-      allItems.filter((item) => {
+      (item: ListedItem) => {
         if (selectedCategories.length > 0 && !selectedCategories.includes(item.category)) {
           return false;
         }
@@ -1258,9 +1270,8 @@ function AppContent({
         if (selectedVinted === "yes" && !item.vinted) return false;
         if (selectedVinted === "no" && item.vinted) return false;
         return true;
-      }),
+      },
     [
-      allItems,
       selectedCategories,
       selectedLocation,
       selectedStatus,
@@ -1271,12 +1282,18 @@ function AppContent({
       selectedVinted,
     ],
   );
+  const visibleItems = useMemo(() => allItems.filter(matchesFilters), [allItems, matchesFilters]);
+  const visibleArchives = useMemo(
+    () => (archivedItems ?? []).filter(matchesFilters),
+    [archivedItems, matchesFilters],
+  );
   const tabItems = useMemo(() => {
     if (activeTab === "stock") return visibleItems.filter((item) => itemStatus(item) !== "stock_b" && !item.vintedExtensionCount);
     if (activeTab === "stock_b") return visibleItems.filter((item) => itemStatus(item) === "stock_b");
     if (activeTab === "prolonges") return visibleItems.filter((item) => (item.vintedExtensionCount ?? 0) > 0 && itemStatus(item) !== "stock_b");
+    if (activeTab === "archives") return visibleArchives;
     return visibleItems;
-  }, [activeTab, visibleItems]);
+  }, [activeTab, visibleItems, visibleArchives]);
   const availableWeightKg = useMemo(
     () => tabItems.reduce(
       (total, item) => total + (item.weightKg ?? klydeAverageWeightKg(item.category, item.subcategory, item.subsubcategory)) * item.quantity,
@@ -1320,15 +1337,23 @@ function AppContent({
     () => visibleItems.filter((item) => itemStatus(item) === "gagne"),
     [visibleItems],
   );
+  // La fiche et le volet d'édition doivent aussi retrouver un article archivé,
+  // qui par construction ne figure pas dans le stock.
   const detailItem = useMemo(
-    () => visibleItems.find((item) => item._id === detailItemId) ?? null,
-    [detailItemId, visibleItems],
+    () =>
+      visibleItems.find((item) => item._id === detailItemId) ??
+      (archivedItems ?? []).find((item) => item._id === detailItemId) ??
+      null,
+    [detailItemId, visibleItems, archivedItems],
   );
   // Article en cours d'édition dans la fiche : lu sur `allItems` (pas
   // `visibleItems`) pour que la fiche ne se ferme pas si un filtre l'exclut.
   const sheetItem = useMemo(
-    () => allItems.find((item) => item._id === editingId) ?? null,
-    [allItems, editingId],
+    () =>
+      allItems.find((item) => item._id === editingId) ??
+      (archivedItems ?? []).find((item) => item._id === editingId) ??
+      null,
+    [allItems, archivedItems, editingId],
   );
 
   useEffect(() => {
@@ -1862,6 +1887,34 @@ function AppContent({
     </button>
   );
 
+  /** Met un article de côté : il quitte le stock et la boutique, sans se perdre. */
+  async function archiveItem(id: Id<"klydeItems">) {
+    setError(null);
+    setBusy(`archive-${id}`);
+    try {
+      await setArchived({ id, archived: true });
+      setDetailItemId((current) => (current === id ? null : current));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Archivage impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Sortie des archives, avec le statut auquel l'article doit reprendre sa vie. */
+  async function restoreItem(id: Id<"klydeItems">, status: KlydeStatus) {
+    setError(null);
+    setBusy(`restore-${id}`);
+    try {
+      await updateStatus({ id, status });
+      await setArchived({ id, archived: false });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Restauration impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const actionButtons = (item: ListedItem) => (
     <div className="grid gap-2">
       {activeTab === "stock" ? (
@@ -1900,6 +1953,50 @@ function AppContent({
             Mettre en magasin
           </button>
         </>
+      ) : null}
+      {activeTab === "archives" ? (
+        canUpdate ? (
+          <>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void restoreItem(item._id, "stock");
+              }}
+              disabled={busy === `restore-${item._id}`}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium disabled:opacity-50"
+            >
+              <ArchiveRestore className="h-4 w-4" />
+              Remettre en stock
+            </button>
+            {canPublish ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void restoreItem(item._id, "en_ligne");
+                }}
+                disabled={busy === `restore-${item._id}`}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--primary)] text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Remettre en ligne
+              </button>
+            ) : null}
+          </>
+        ) : null
+      ) : canUpdate ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            void archiveItem(item._id);
+          }}
+          disabled={busy === `archive-${item._id}`}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] text-sm font-medium disabled:opacity-50"
+        >
+          <Archive className="h-4 w-4" />
+          Archiver
+        </button>
       ) : null}
       {canDelete ? (
         <button
@@ -2032,6 +2129,34 @@ function AppContent({
           <VintedFlag on={Boolean(item.vinted)} />
         </div>
       </td>
+      {/* La sortie des archives doit tenir en un clic, sans ouvrir la fiche. */}
+      {activeTab === "archives" ? (
+        <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+          {canUpdate ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => void restoreItem(item._id, "stock")}
+                disabled={busy === `restore-${item._id}`}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] px-3 text-sm font-medium disabled:opacity-50"
+              >
+                <ArchiveRestore className="h-4 w-4" />
+                Remettre en stock
+              </button>
+              {canPublish ? (
+                <button
+                  type="button"
+                  onClick={() => void restoreItem(item._id, "en_ligne")}
+                  disabled={busy === `restore-${item._id}`}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  Remettre en ligne
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </td>
+      ) : null}
     </tr>
   );
 
@@ -2184,6 +2309,7 @@ function AppContent({
           {navButton("prolonges", <ArrowRight className="h-4 w-4" />, "Articles prolongés")}
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
           {navButton("boutique", <ShoppingBag className="h-4 w-4" />, "Boutique")}
+          {navButton("archives", <Archive className="h-4 w-4" />, "Archives")}
           {canReadVinted ? navButton("vinted", <Mail className="h-4 w-4" />, "Emails Vinted") : null}
           {canReadReports ? navButton("rapports", <BarChart3 className="h-4 w-4" />, "Rapports") : null}
         </nav>
@@ -2223,7 +2349,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "rapports" ? "Rapports" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "rapports" ? "Rapports" : activeTab === "archives" ? "Archives" : "Suivi"}
           </h1>
           <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {canCreate ? (
@@ -2443,15 +2569,17 @@ function AppContent({
             <VintedMailbox canUpdate={canUpdateVinted} canManage={canManageVinted} />
           ) : activeTab === "boutique" ? (
             <StorefrontSettings canManage={canPublish} />
-          ) : items === undefined ? (
+          ) : (activeTab === "archives" ? archivedItems : items) === undefined ? (
             <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement du stock
+              {activeTab === "archives" ? "Chargement des archives" : "Chargement du stock"}
             </div>
           ) : activeTab !== "suivi" ? (
             tabItems.length === 0 ? (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center text-sm text-[var(--muted-foreground)]">
-                Aucun article.
+                {activeTab === "archives"
+                  ? "Aucun article archivé. Un article mis de côté depuis le stock apparaît ici, prêt à repartir en stock ou en ligne."
+                  : "Aucun article."}
               </div>
             ) : (
               <>
@@ -2535,6 +2663,9 @@ function AppContent({
                         <th className="px-4 py-3 text-left font-medium">Emplacement</th>
                         <th className="px-4 py-3 text-left font-medium">Prix</th>
                         <th className="px-4 py-3 text-left font-medium">Statut</th>
+                        {activeTab === "archives" ? (
+                          <th className="px-4 py-3 text-right font-medium">Actions</th>
+                        ) : null}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)]">
@@ -2738,6 +2869,29 @@ function AppContent({
             </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-[var(--border)] px-4 py-3 sm:flex-row sm:justify-end">
+              {canUpdate ? (
+                detailItem.archivedAt ? (
+                  <button
+                    type="button"
+                    onClick={() => void restoreItem(detailItem._id, "stock")}
+                    disabled={busy === `restore-${detailItem._id}`}
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
+                  >
+                    <ArchiveRestore className="h-4 w-4" />
+                    Remettre en stock
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void archiveItem(detailItem._id)}
+                    disabled={busy === `archive-${detailItem._id}`}
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archiver
+                  </button>
+                )
+              ) : null}
               {canDelete ? (
                 <button
                   type="button"
@@ -3256,6 +3410,29 @@ function AppContent({
                 </button>
               ) : null}
 
+              {canUpdate && sheetItem ? (
+                sheetItem.archivedAt ? (
+                  <button
+                    type="button"
+                    onClick={() => void restoreItem(sheetItem._id, "stock")}
+                    disabled={busy === `restore-${sheetItem._id}`}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[var(--border)] px-4 text-sm font-semibold disabled:opacity-50"
+                  >
+                    <ArchiveRestore className="h-4 w-4" />
+                    Remettre en stock
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void archiveItem(sheetItem._id)}
+                    disabled={busy === `archive-${sheetItem._id}`}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[var(--border)] px-4 text-sm font-semibold disabled:opacity-50"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archiver l’article
+                  </button>
+                )
+              ) : null}
               {canDelete && sheetItem ? (
                 <button
                   type="button"

@@ -551,6 +551,8 @@ export default defineSchema(
     // --- Gestion interne (onglet Gestion du CRM) ---
     site: v.optional(v.union(v.literal("60"), v.literal("76"))),
     assignedTo: v.optional(v.id("teamMembers")),
+    /** Équipe opérationnelle Recyclerie (remplace progressivement assignedTo). */
+    assignedWorkerId: v.optional(v.id("polyvalentWorkers")),
     estimatedHours: v.optional(v.number()),
     actualHours: v.optional(v.number()),
     quoteAmount: v.optional(v.number()),
@@ -597,6 +599,7 @@ export default defineSchema(
     .index("by_userId", ["userId"])
     .index("by_scheduledDate", ["scheduledDate"])
     .index("by_assignedVehicle", ["assignedVehicle"])
+    .index("by_assignedWorkerId", ["assignedWorkerId"])
     .index("by_reference", ["reference"]),
 
   /**
@@ -810,6 +813,9 @@ export default defineSchema(
     role: v.optional(v.string()),
     email: v.optional(v.string()),
     site: v.optional(v.union(v.literal("60"), v.literal("76"))),
+    /** Sites de rattachement : un salarié peut intervenir sur les deux. */
+    sites: v.optional(v.array(v.union(v.literal("60"), v.literal("76")))),
+    employmentType: v.optional(v.union(v.literal("permanent"), v.literal("polyvalent"))),
     active: v.boolean(),
     createdAt: v.number(),
   }),
@@ -1157,6 +1163,8 @@ export default defineSchema(
     // Véhicule de la flotte affecté à la tournée.
     fleetVehicleId: v.optional(v.id("vehicles")),
     driverId: v.optional(v.id("teamMembers")),
+    /** Chauffeur issu de l'équipe opérationnelle (remplace `driverId`). */
+    driverWorkerId: v.optional(v.id("polyvalentWorkers")),
     stops: v.array(v.object({
       requestId: v.optional(v.id("requests")),
       address: v.string(),
@@ -1790,10 +1798,16 @@ export default defineSchema(
     aiNotes: v.optional(v.string()),
     trackingNotes: v.optional(v.string()),
     featured: v.optional(v.boolean()),
+    /**
+     * Mise aux archives : l'article sort du stock, de la boutique et des
+     * rapports, mais garde son statut pour pouvoir être remis en ligne.
+     */
+    archivedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
+    .index("by_archivedAt", ["archivedAt"])
     .index("by_createdAt", ["createdAt"])
     .index("by_sku", ["sku"])
     .index("by_boutiquePublished", ["publishedOnBoutique"])
@@ -2429,9 +2443,14 @@ export default defineSchema(
   /* ─── Agents polyvalents (Recyclerie) ─────────────────────────────────────
    * Gestion des ouvriers polyvalents : un catalogue de tâches, une liste
    * d'ouvriers (nom/prénom), et des activités qui affectent un ouvrier à une
-   * tâche sur un créneau daté. Distinct de `teamMembers` (agents permanents). */
+   * tâche sur un créneau daté. `polyvalentWorkers` est désormais l'unique
+   * équipe Recyclerie (les anciens « agents permanents » y ont été fusionnés). */
   polyvalentTasks: defineTable({
     name: v.string(),
+    /** Site de traitement : une tâche appartient à une recyclerie. */
+    site: v.optional(v.union(v.literal("60"), v.literal("76"))),
+    /** Main d'œuvre requise par mois, en heures (base du plan de charge). */
+    requiredMonthlyHours: v.optional(v.number()),
     createdBy: v.string(),
     createdAt: v.number(),
   }).index("by_name", ["name"]),
@@ -2439,16 +2458,65 @@ export default defineSchema(
   polyvalentWorkers: defineTable({
     firstName: v.string(),
     lastName: v.string(),
+    email: v.optional(v.string()),
+    /** Recycleries de rattachement : un salarié peut intervenir sur les deux. */
+    sites: v.optional(v.array(v.union(v.literal("60"), v.literal("76")))),
+    /** Type de contrat : agent permanent ou agent polyvalent. */
+    employmentType: v.optional(v.union(v.literal("permanent"), v.literal("polyvalent"))),
+    /** Inactif = conservé pour l'historique mais plus attribuable. */
+    active: v.optional(v.boolean()),
+    /** Salarié RH correspondant : la fiche RH fait foi pour l'identité. */
+    hrEmployeeId: v.optional(v.id("hrEmployees")),
+    /** Fin du dernier contrat (`YYYY-MM-DD`) ; absente pour un CDI. */
+    contractEndAt: v.optional(v.string()),
+    /** Réactivation manuelle : la synchro RH ne redésactive plus ce salarié. */
+    reactivatedAt: v.optional(v.number()),
+    /**
+     * Statut forcé à la main dans l'app. Il l'emporte sur la fin de contrat,
+     * mais pas sur une sortie d'effectif RH.
+     */
+    activeOverride: v.optional(v.boolean()),
+    /** Durée mensuelle de travail du dernier contrat, en heures (source RH). */
+    monthlyHours: v.optional(v.number()),
     createdBy: v.string(),
     createdAt: v.number(),
-  }),
+  }).index("by_hrEmployee", ["hrEmployeeId"]),
+
+  polyvalentWorkerSchedules: defineTable({
+    workerId: v.id("polyvalentWorkers"),
+    availability: v.array(v.object({
+      weekday: v.number(),
+      start: v.string(),
+      end: v.string(),
+    })),
+  }).index("by_worker", ["workerId"]),
+
+  /** Règles hebdomadaires durables : elles restent actives jusqu'à annulation. */
+  polyvalentTaskRecurrences: defineTable({
+    taskId: v.id("polyvalentTasks"),
+    workerId: v.optional(v.id("polyvalentWorkers")),
+    slots: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string() })),
+    /** @deprecated La charge d'un créneau est la durée du créneau. */
+    plannedHours: v.optional(v.number()),
+    /** @deprecated La recyclerie vient désormais de la tâche. */
+    site: v.optional(v.union(v.literal("60"), v.literal("76"))),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_worker", ["workerId"]),
 
   polyvalentActivities: defineTable({
     taskId: v.id("polyvalentTasks"),
-    workerId: v.id("polyvalentWorkers"),
+    /** Une tâche peut être planifiée avant qu'un salarié lui soit affecté. */
+    workerId: v.optional(v.id("polyvalentWorkers")),
     /** Début et fin du créneau, en millisecondes epoch (date + heure). */
     startAt: v.number(),
     endAt: v.number(),
+    /** @deprecated La charge d'un créneau est la durée du créneau. */
+    plannedHours: v.optional(v.number()),
+    /** @deprecated La recyclerie vient désormais de la tâche. */
+    site: v.optional(v.union(v.literal("60"), v.literal("76"))),
     createdBy: v.string(),
     createdAt: v.number(),
   })
