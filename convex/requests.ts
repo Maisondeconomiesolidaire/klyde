@@ -166,13 +166,15 @@ async function createNewRequestNotification(
 
   // Email à l'équipe recyclerie — décalé pour rester sous la limite Resend
   // (2 req/s) avec l'email client. E. Carette est ajouté uniquement pour
-  // les demandes d'aérogommage par l'action d'envoi.
+  // les demandes d'aérogommage par l'action d'envoi, et un dépôt part à
+  // l'équipe de SA recyclerie : d'où le site transmis ici.
   if (request) {
     await ctx.scheduler.runAfter(1200, internal.emails.sendNewRequestToStaff, {
       type: request.type,
       reference: request.reference ?? String(request._id).slice(-6),
       customerName: customerFullName(request.customer),
       article: await emailArticlePreview(ctx, request),
+      site: request.depot?.site ?? request.site,
     });
   }
 }
@@ -1750,6 +1752,35 @@ export const setOutcome = mutation({
         await scheduleStripeSync(ctx, articleId);
       }
     }
+  },
+});
+
+
+/**
+ * Vente encaissée au terminal, en boutique : les deux étapes du parcours
+ * boutique sont franchies d'un coup.
+ *
+ * Le paiement est fait ET l'article part avec le client — il n'y a pas de
+ * retrait à attendre, contrairement à une commande payée en ligne. La demande
+ * est donc close et gagnée dans la foulée.
+ */
+export const completeTerminalSale = internalMutation({
+  args: { requestId: v.id("requests"), by: v.optional(v.string()) },
+  handler: async (ctx, { requestId, by }) => {
+    const request = await ctx.db.get(requestId);
+    if (!request) throw new Error("Demande introuvable.");
+    const steps = request.processSteps ?? [];
+    const now = Date.now();
+    await ctx.db.patch(requestId, {
+      completedSteps: steps.length,
+      outcome: "gagnee",
+      processLog: steps.map((_, index) => ({
+        step: index,
+        by: by?.trim() || "Caisse (terminal)",
+        at: now,
+      })),
+      updatedAt: now,
+    });
   },
 });
 

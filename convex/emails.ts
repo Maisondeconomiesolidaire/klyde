@@ -473,6 +473,24 @@ const AEROGOMMAGE_STAFF_EMAILS = [
   "e.carette@eco-solidaire.fr",
 ];
 
+/**
+ * Dépôts en recyclerie : chaque site a sa propre équipe d'accueil, seule à
+ * pouvoir tenir le planning des créneaux du lundi. Un dépôt part donc aux
+ * destinataires de SA recyclerie, pas à la liste générale.
+ */
+const DEPOT_STAFF_EMAILS: Record<"60" | "76", string[]> = {
+  "60": [
+    "e.carette@eco-solidaire.fr",
+    "a.dargent@eco-solidaire.fr",
+    "accueil.recyclerie@eco-solidaire.fr",
+  ],
+  "76": [
+    "o.dalencourt@eco-solidaire.fr",
+    "v.horcholle@eco-solidaire.fr",
+    "accueil.recyclerie@eco-solidaire.fr",
+  ],
+};
+
 /** Lien de paiement envoyé au client depuis le CRM. */
 export const sendPaymentLink = internalAction({
   args: {
@@ -512,8 +530,10 @@ export const sendNewRequestToStaff = internalAction({
     reference: v.string(),
     customerName: v.string(),
     article: articleArg,
+    /** Recyclerie concernée — renseignée pour les dépôts, qui sont routés par site. */
+    site: v.optional(v.union(v.literal("60"), v.literal("76"))),
   },
-  handler: async (_ctx, { type, reference, customerName, article }) => {
+  handler: async (_ctx, { type, reference, customerName, article, site }) => {
     const label = typeLabel(type);
     const html = shell({
       preheader: `Nouvelle demande ${label} de ${customerName} (#${reference}).`,
@@ -526,7 +546,11 @@ export const sendNewRequestToStaff = internalAction({
       `,
     });
     const recipients =
-      type === "aerogommage" ? AEROGOMMAGE_STAFF_EMAILS : NEW_REQUEST_STAFF_EMAILS;
+      type === "depot" && site
+        ? DEPOT_STAFF_EMAILS[site]
+        : type === "aerogommage"
+          ? AEROGOMMAGE_STAFF_EMAILS
+          : NEW_REQUEST_STAFF_EMAILS;
     await resendSend(recipients, `Nouvelle demande · ${label} #${reference}`, html);
   },
 });
@@ -815,8 +839,11 @@ export const sendInvoicePendingDigest = internalAction({
  * la Recyclerie 60 : c'est le site principal, et un lien vaut mieux qu'aucun.
  */
 const GOOGLE_REVIEW_LINKS: Record<string, { url: string; label: string }> = {
-  "60": { url: "https://share.google/6Vi8FRjpkRx6dSek6", label: "Recyclerie du Pays de Bray (60)" },
-  "76": { url: "https://share.google/1entOnue5Ej2HWcCt", label: "Recyclerie de Gournay en Bray (76)" },
+  // Liens « /review » de la fiche Google : ils ouvrent directement le
+  // formulaire de notation, là où un lien de partage impose un détour par la
+  // fiche puis un second clic.
+  "60": { url: "https://g.page/r/Ca7-zpJ4l8p2EBM/review", label: "Recyclerie du Pays de Bray (60)" },
+  "76": { url: "https://g.page/r/Cc5Sx_tZfUvBEBM/review", label: "Recyclerie de Gournay en Bray (76)" },
 };
 
 /** Invitation à laisser un avis Google, envoyée une fois la demande gagnée. */

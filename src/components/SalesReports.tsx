@@ -20,6 +20,14 @@ function euro(value: number) {
   return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 }
 
+/** Poids en kg. Sous le kilo, deux décimales ; au-delà, une suffit. */
+function weight(kg: number) {
+  return `${kg.toLocaleString("fr-FR", {
+    minimumFractionDigits: kg < 1 ? 2 : 1,
+    maximumFractionDigits: kg < 1 ? 2 : 1,
+  })} kg`;
+}
+
 function day(ms: number) {
   return new Date(ms).toLocaleDateString("fr-FR", {
     day: "2-digit",
@@ -136,7 +144,7 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
       ) : (
         <>
           {/* ── Chiffres clés ─────────────────────────────────────────────── */}
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-4">
               <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
                 Chiffre d'affaires
@@ -171,12 +179,23 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
                 </p>
               ) : null}
             </div>
+            {/* Le poids vendu est le chiffre du réemploi : c'est lui qui dit
+                combien de matière a été détournée du déchet. */}
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+                Poids vendu
+              </p>
+              <p className="mt-1 text-2xl font-black">{weight(report.weightKg)}</p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                Poids saisi, ou moyenne de la catégorie à défaut
+              </p>
+            </div>
           </div>
 
           {/* ── Répartition mensuelle ─────────────────────────────────────── */}
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
             <h2 className="text-sm font-semibold">
-              Chiffre d'affaires mois par mois · {structureName(outlet)} · {year}
+              Chiffre d'affaires et poids mois par mois · {structureName(outlet)} · {year}
             </h2>
             <ul className="mt-3 space-y-1.5">
               {report.monthly.map((amount, index) => (
@@ -203,6 +222,9 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
                         width: bestMonth ? `${Math.round((amount / bestMonth) * 100)}%` : "0%",
                       }}
                     />
+                  </span>
+                  <span className="w-20 shrink-0 text-right text-sm text-[var(--muted-foreground)]">
+                    {weight(report.monthlyWeight[index])}
                   </span>
                   <span
                     className={cn(
@@ -243,6 +265,9 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
                       >
                         {sale.outlet === "mobifrip" ? "Mobifrip" : "Klyd"}
                       </span>
+                      <span className="w-16 shrink-0 text-right text-xs text-[var(--muted-foreground)]">
+                        {weight(sale.weightKg)}
+                      </span>
                       <span className="w-20 shrink-0 text-right text-sm font-semibold">
                         {euro(sale.amount)}
                       </span>
@@ -256,7 +281,8 @@ export function SalesReports({ canShare }: { canShare: boolean }) {
           <p className="flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
             <BarChart3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             Chiffre d'affaires calculé sur les articles passés en « gagné », au prix
-            réellement encaissé.
+            réellement encaissé. Le poids vendu additionne le poids de chaque article,
+            saisi ou estimé d'après sa catégorie.
           </p>
         </>
       )}
@@ -383,7 +409,10 @@ function ShareReportDialog({
 
           <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-3 text-sm text-[var(--muted-foreground)]">
             Le rapport est joint en PDF, avec le récapitulatif
-            {draft ? ` (${euro(draft.revenue)} · ${draft.salesCount} ventes)` : ""}.
+            {draft
+              ? ` (${euro(draft.revenue)} · ${draft.salesCount} ventes · ${weight(draft.weightKg)})`
+              : ""}
+            .
           </div>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
