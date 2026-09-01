@@ -48,6 +48,7 @@ import { VintedMailbox } from "./components/VintedMailbox";
 import { SalesReports } from "./components/SalesReports";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
+import { ProfileSync } from "./components/ProfileSync";
 import { KLYDE_GENDERS, klydeAverageWeightKg, klydeCategories, klydeSubcategories, klydeSubsubcategories } from "../convex/klydeTaxonomy";
 
 type KlydeStatus =
@@ -101,17 +102,6 @@ const OUTLETS = [
 
 type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
 type ShopItem = ListedItem;
-
-/** Crée/rafraîchit le profil Convex à la connexion et rattache les données. */
-function ProfileSync({ app }: { app: string }) {
-  const syncProfile = useMutation(api.users.syncProfile);
-  useEffect(() => {
-    void syncProfile({
-      source: { app, path: window.location.pathname + window.location.search + window.location.hash },
-    });
-  }, [app, syncProfile]);
-  return null;
-}
 
 const initialForm: FormState = {
   photos: [],
@@ -5240,6 +5230,7 @@ export default function App() {
   if (route === "/profil") {
     return (
       <>
+        <ProfileSync app="klyde" />
         <UpdateAvailableBanner appName="Klyde" />
         <SignedOut>
           <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
@@ -5250,7 +5241,6 @@ export default function App() {
           </div>
         </SignedOut>
         <SignedIn>
-          <ProfileSync app="klyde" />
           <KlydeProfilePage />
         </SignedIn>
       </>
@@ -5260,10 +5250,8 @@ export default function App() {
   if (route) {
     return (
       <>
+        <ProfileSync app="klyde" />
         <UpdateAvailableBanner appName="Klyde" />
-        <SignedIn>
-          <ProfileSync app="klyde" />
-        </SignedIn>
         <BoutiqueShell route={route} />
       </>
     );
@@ -5271,7 +5259,8 @@ export default function App() {
 
   return (
     <>
-      <UpdateAvailableBanner appName="Klyde" />
+      <ProfileSync app="klyde" />
+        <UpdateAvailableBanner appName="Klyde" />
       <SignedOut>
         <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
           <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6">
@@ -5289,7 +5278,6 @@ export default function App() {
         </div>
       </SignedOut>
       <SignedIn>
-        <ProfileSync app="klyde" />
         <AppContent theme={theme} toggleTheme={toggleTheme} />
       </SignedIn>
     </>
