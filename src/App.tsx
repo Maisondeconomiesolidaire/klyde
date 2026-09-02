@@ -3945,7 +3945,7 @@ function BoutiqueHeader() {
         <div className="flex items-center gap-1 sm:gap-4">
           {/* Sur mobile, la boutique occupe tout l'écran : ce bouton est le
               seul chemin vers les autres boutiques du groupe. */}
-          <PortalButton className="gap-1 text-[11px] tracking-[0.04em] hover:opacity-60 sm:hidden" />
+          <PortalButton className="gap-1.5 text-[11px] tracking-[0.04em] hover:opacity-60 sm:text-xs" />
           <button
             type="button"
             onClick={() => goTo("")}
