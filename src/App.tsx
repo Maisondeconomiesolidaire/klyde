@@ -43,6 +43,7 @@ import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { AppSwitcher } from "./components/AppSwitcher";
+import { PortalButton } from "./components/PortalButton";
 import { HelpButton } from "./components/HelpButton";
 import { VintedMailbox } from "./components/VintedMailbox";
 import { SalesReports } from "./components/SalesReports";
@@ -3942,6 +3943,9 @@ function BoutiqueHeader() {
           <Logo />
         </button>
         <div className="flex items-center gap-1 sm:gap-4">
+          {/* Sur mobile, la boutique occupe tout l'écran : ce bouton est le
+              seul chemin vers les autres boutiques du groupe. */}
+          <PortalButton className="gap-1 text-[11px] tracking-[0.04em] hover:opacity-60 sm:hidden" />
           <button
             type="button"
             onClick={() => goTo("")}
