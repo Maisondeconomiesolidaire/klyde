@@ -1,5 +1,6 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
+import { AuthSwitch } from "./components/ui/auth-switch";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Archive,
@@ -5220,7 +5221,6 @@ function KlydeProfilePage() {
 
 export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
-  const clerk = useClerk();
   const { theme, toggle: toggleTheme } = useKlydeTheme();
 
   useEffect(() => {
@@ -5237,12 +5237,7 @@ export default function App() {
         <ProfileSync app="klyde" />
         <UpdateAvailableBanner appName="Klyde" />
         <SignedOut>
-          <div className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
-            <AuthChoicePanel
-              onSignIn={() => clerk.openSignIn({})}
-              onSignUp={() => clerk.openSignUp({})}
-            />
-          </div>
+          <AuthSwitch appName="Klyde" logoSrc="/logo-light.png" />
         </SignedOut>
         <SignedIn>
           <KlydeProfilePage />
@@ -5266,20 +5261,7 @@ export default function App() {
       <ProfileSync app="klyde" />
         <UpdateAvailableBanner appName="Klyde" />
       <SignedOut>
-        <div className="flex min-h-screen items-center justify-center bg-[var(--background)] p-6 text-[var(--foreground)]">
-          <div className="w-full max-w-sm rounded-md border border-[var(--border)] bg-[var(--card)] p-6">
-            <Logo theme={theme} />
-            <p className="mt-4 text-sm text-[var(--muted-foreground)]">
-              Connecte-toi pour accéder à ton stock.
-            </p>
-            <div className="mt-6">
-              <AuthChoicePanel
-                onSignIn={() => clerk.openSignIn({})}
-                onSignUp={() => clerk.openSignUp({})}
-              />
-            </div>
-          </div>
-        </div>
+        <AuthSwitch appName="Klyde" logoSrc="/logo-light.png" />
       </SignedOut>
       <SignedIn>
         <AppContent theme={theme} toggleTheme={toggleTheme} />
@@ -5288,29 +5270,3 @@ export default function App() {
   );
 }
 
-function AuthChoicePanel({
-  onSignIn,
-  onSignUp,
-}: {
-  onSignIn: () => void;
-  onSignUp: () => void;
-}) {
-  return (
-    <div className="grid w-full gap-3">
-      <button
-        type="button"
-        onClick={onSignIn}
-        className="rounded-2xl bg-[var(--primary)] px-5 py-4 text-base font-bold text-white shadow-sm transition hover:-translate-y-0.5"
-      >
-        J'ai déjà un compte, me connecter
-      </button>
-      <button
-        type="button"
-        onClick={onSignUp}
-        className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-5 py-4 text-base font-bold text-[var(--foreground)] shadow-sm transition hover:-translate-y-0.5 hover:bg-[var(--accent)]"
-      >
-        Je m'inscris
-      </button>
-    </div>
-  );
-}
