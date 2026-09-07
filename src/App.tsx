@@ -1238,6 +1238,9 @@ function AppContent({
   // Rapports de ventes : lecture du chiffre d'affaires, partage par email.
   const canReadReports = can("klyde:rapports", "read");
   const canShareReports = can("klyde:rapports", "share");
+  /** Saisie du chiffre d'affaires magasin : relevé manuel, donc création. */
+  const canEnterStoreRevenue = can("klyde:rapports", "create");
+  const canDeleteStoreRevenue = can("klyde:rapports", "delete");
 
   useEffect(() => { void ensurePoints({}); }, [ensurePoints]);
 
@@ -2581,7 +2584,11 @@ function AppContent({
           )}
 
           {activeTab === "rapports" ? (
-            <SalesReports canShare={canShareReports} />
+            <SalesReports
+              canShare={canShareReports}
+              canEnterStore={canEnterStoreRevenue}
+              canDeleteStore={canDeleteStoreRevenue}
+            />
           ) : activeTab === "vinted" ? (
             <VintedMailbox canUpdate={canUpdateVinted} canManage={canManageVinted} />
           ) : activeTab === "boutique" ? (
