@@ -2115,6 +2115,15 @@ function AppContent({
       <td className="px-4 py-3 font-semibold">
         {item.price != null ? `${item.price.toFixed(2)} €` : "—"}
       </td>
+      {/* Prix réellement encaissé : renseigné à l'acceptation d'une offre, donc
+          vide tant que l'article n'est pas vendu. */}
+      <td className="px-4 py-3 font-semibold">
+        {item.actualSalePrice != null ? (
+          <span className="text-emerald-600">{item.actualSalePrice.toFixed(2)} €</span>
+        ) : (
+          <span className="font-normal text-[var(--muted-foreground)]">—</span>
+        )}
+      </td>
       <td className="px-4 py-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusPill status={item.status} />
@@ -2576,7 +2585,7 @@ function AppContent({
             ) : (
               <>
                 {activeTab === "stock" ? (
-                  <div className={cn("mb-4 grid gap-3 sm:grid-cols-2", showSoldValue && "lg:grid-cols-3")}>
+                  <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
                       <span className="text-sm font-semibold">Poids estimé disponible</span>
                       <span className="text-lg font-black text-[var(--primary)]">{availableWeightKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} kg</span>
@@ -2585,21 +2594,23 @@ function AppContent({
                       <span className="text-sm font-semibold">{showSoldValue ? "Valeur au prix affiché" : "Valeur du stock"}</span>
                       <span className="text-lg font-black text-[var(--primary)]">{availableStockValue.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</span>
                     </div>
-                    {showSoldValue ? (
-                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3">
-                        <span className="min-w-0">
-                          <span className="block text-sm font-semibold">Réellement encaissé</span>
-                          {availableStockValue > 0 ? (
-                            <span className="block text-xs text-[var(--muted-foreground)]">
-                              {soldDelta >= 0 ? "+" : "−"}
-                              {Math.abs(soldDelta).toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}
-                              {" "}({Math.round((soldDelta / availableStockValue) * 100)} %) vs prix affiché
-                            </span>
-                          ) : null}
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold">
+                          {showSoldValue ? "Réellement encaissé" : "Valeur du stock réel"}
                         </span>
-                        <span className="shrink-0 text-lg font-black text-emerald-600">{soldValue.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</span>
-                      </div>
-                    ) : null}
+                        {/* L'écart ne s'affiche qu'une fois un prix réel saisi :
+                            sinon il vaut zéro et n'apprend rien. */}
+                        {availableStockValue > 0 && soldDelta !== 0 ? (
+                          <span className="block text-xs text-[var(--muted-foreground)]">
+                            {soldDelta >= 0 ? "+" : "−"}
+                            {Math.abs(soldDelta).toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}
+                            {" "}({Math.round((soldDelta / availableStockValue) * 100)} %) vs prix affiché
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 text-lg font-black text-emerald-600">{soldValue.toLocaleString("fr-FR", { style: "currency", currency: "EUR" })}</span>
+                    </div>
                   </div>
                 ) : null}
                 {canPublish && selectedItems.length > 0 ? (
@@ -2654,6 +2665,7 @@ function AppContent({
                         <th className="px-4 py-3 text-left font-medium">Catégorie</th>
                         <th className="px-4 py-3 text-left font-medium">Emplacement</th>
                         <th className="px-4 py-3 text-left font-medium">Prix</th>
+                        <th className="px-4 py-3 text-left font-medium">Prix réel</th>
                         <th className="px-4 py-3 text-left font-medium">Statut</th>
                         {activeTab === "archives" ? (
                           <th className="px-4 py-3 text-right font-medium">Actions</th>
