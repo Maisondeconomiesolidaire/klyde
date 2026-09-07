@@ -310,6 +310,10 @@ function inputClass() {
 }
 
 function asNumber(value: string) {
+  // Un champ laissé vide n'est pas un zéro : `Number("")` vaut 0, ce qui
+  // enregistrait un prix encaissé de 0 € sur tout article simplement
+  // enregistré sans passer par ce champ.
+  if (!value.trim()) return undefined;
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -416,9 +420,18 @@ function itemStatus(item: ListedItem): KlydeStatus {
  */
 function itemRevenue(item: ListedItem): number {
   if (["en_cours_envoi", "envoye", "gagne"].includes(itemStatus(item))) {
-    return item.actualSalePrice ?? item.price ?? 0;
+    return realPrice(item) ?? 0;
   }
   return item.price ?? 0;
+}
+
+/**
+ * Prix réel d'un article : le montant encaissé s'il est connu, sinon le prix
+ * affiché. Un `actualSalePrice` à 0 est traité comme absent — d'anciens
+ * enregistrements en ont posé un par le simple fait d'un champ laissé vide.
+ */
+function realPrice(item: { actualSalePrice?: number; price?: number }) {
+  return item.actualSalePrice || item.price;
 }
 
 function columnRevenue(items: ListedItem[]): number {
@@ -1305,7 +1318,7 @@ function AppContent({
   const soldValue = useMemo(
     () =>
       tabItems.reduce(
-        (total, item) => total + (item.actualSalePrice ?? item.price ?? 0) * item.quantity,
+        (total, item) => total + (realPrice(item) ?? 0) * item.quantity,
         0,
       ),
     [tabItems],
@@ -1396,7 +1409,7 @@ function AppContent({
       color: item.color ?? "",
       material: item.material ?? "",
       price: item.price != null ? String(item.price) : "",
-      actualSalePrice: item.actualSalePrice != null ? String(item.actualSalePrice) : "",
+      actualSalePrice: item.actualSalePrice ? String(item.actualSalePrice) : "",
       parcelSize: item.parcelSize ?? "Moyen",
       gender: item.gender ?? "",
       style: item.style ?? "",
@@ -2115,11 +2128,14 @@ function AppContent({
       <td className="px-4 py-3 font-semibold">
         {item.price != null ? `${item.price.toFixed(2)} €` : "—"}
       </td>
-      {/* Prix réellement encaissé : renseigné à l'acceptation d'une offre, donc
-          vide tant que l'article n'est pas vendu. */}
+      {/* Prix réellement encaissé, renseigné à l'acceptation d'une offre. Tant
+          qu'il ne l'est pas, le prix affiché fait foi — il est alors en gris
+          pour distinguer un montant constaté d'un montant attendu. */}
       <td className="px-4 py-3 font-semibold">
-        {item.actualSalePrice != null ? (
-          <span className="text-emerald-600">{item.actualSalePrice.toFixed(2)} €</span>
+        {realPrice(item) != null ? (
+          <span className={item.actualSalePrice ? "text-emerald-600" : "text-[var(--muted-foreground)]"}>
+            {realPrice(item)!.toFixed(2)} €
+          </span>
         ) : (
           <span className="font-normal text-[var(--muted-foreground)]">—</span>
         )}
