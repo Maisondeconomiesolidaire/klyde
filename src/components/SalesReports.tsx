@@ -39,8 +39,8 @@ function day(ms: number) {
 
 /**
  * Récapitulatif des ventes par mois et par année, et partage du rapport par
- * email. Le chiffre d'affaires vient des articles passés en « gagné » : toute
- * vente, Vinted comme boutique, finit par là.
+ * email. Le chiffre d'affaires vient des articles enregistrés « Vendu » : la
+ * confirmation ultérieure « Gagné » ne change pas le mois de vente.
  */
 export function SalesReports({
   canShare,
@@ -283,7 +283,7 @@ export function SalesReports({
               <h2 className="text-sm font-semibold">Ventes de {report.label}</h2>
               {report.sales.length === 0 ? (
                 <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-                  Aucune vente encaissée sur cette période.
+                  Aucune vente enregistrée sur cette période.
                 </p>
               ) : (
                 <ul className="mt-3 divide-y divide-[var(--border)]">
@@ -318,8 +318,8 @@ export function SalesReports({
 
           <p className="flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
             <BarChart3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Chiffre d'affaires calculé sur les articles passés en « gagné », au prix
-            réellement encaissé. Le poids vendu additionne le poids de chaque article,
+            Chiffre d'affaires calculé dès l'enregistrement « Vendu », au prix
+            réellement renseigné. Le poids vendu additionne le poids de chaque article,
             saisi ou estimé d'après sa catégorie.
           </p>
         </>
