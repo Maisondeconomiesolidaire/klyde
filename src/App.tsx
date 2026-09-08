@@ -6,20 +6,22 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
-  BarChart3,
   ArrowRight,
+  BarChart3,
+  Camera,
   Check,
   ChevronDown,
   ChevronLeft,
-  Crop,
   ChevronRight,
+  Crop,
   Download,
   Heart,
   ImagePlus,
+  Kanban,
   LayoutGrid,
   List,
-  Kanban,
   Loader2,
+  LogOut,
   Mail,
   Menu,
   Moon,
@@ -35,9 +37,8 @@ import {
   Trash2,
   Trophy,
   User,
+  Users,
   X,
-  Camera,
-  LogOut,
 } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
@@ -48,6 +49,7 @@ import { PortalButton } from "./components/PortalButton";
 import { HelpButton } from "./components/HelpButton";
 import { VintedMailbox } from "./components/VintedMailbox";
 import { SalesReports } from "./components/SalesReports";
+import { Customers } from "./components/Customers";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 import { ProfileSync } from "./components/ProfileSync";
@@ -62,7 +64,7 @@ type KlydeStatus =
   | "gagne"
   | "magasin"
   | "archive";
-type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted" | "rapports" | "archives";
+type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted" | "clients" | "rapports" | "archives";
 
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
@@ -1240,6 +1242,11 @@ function AppContent({
   const canShareReports = can("klyde:rapports", "share");
   /** Saisie du chiffre d'affaires magasin : relevé manuel, donc création. */
   const canEnterStoreRevenue = can("klyde:rapports", "create");
+  // Clients : reconstitués depuis les emails, complétés à la main.
+  const canReadCustomers = can("klyde:clients", "read");
+  const canCreateCustomers = can("klyde:clients", "create");
+  const canUpdateCustomers = can("klyde:clients", "update");
+  const canDeleteCustomers = can("klyde:clients", "delete");
   const canDeleteStoreRevenue = can("klyde:rapports", "delete");
 
   useEffect(() => { void ensurePoints({}); }, [ensurePoints]);
@@ -2331,6 +2338,7 @@ function AppContent({
           {navButton("boutique", <ShoppingBag className="h-4 w-4" />, "Boutique")}
           {navButton("archives", <Archive className="h-4 w-4" />, "Archives")}
           {canReadVinted ? navButton("vinted", <Mail className="h-4 w-4" />, "Emails Vinted") : null}
+          {canReadCustomers ? navButton("clients", <Users className="h-4 w-4" />, "Clients") : null}
           {canReadReports ? navButton("rapports", <BarChart3 className="h-4 w-4" />, "Rapports") : null}
         </nav>
         <div className="space-y-3 border-t border-[var(--border)] p-4">
@@ -2369,7 +2377,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "rapports" ? "Rapports" : activeTab === "archives" ? "Archives" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "clients" ? "Clients" : activeTab === "rapports" ? "Rapports" : activeTab === "archives" ? "Archives" : "Suivi"}
           </h1>
           <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {canCreate ? (
@@ -2419,6 +2427,7 @@ function AppContent({
             ["prolonges", "Prolongés", true],
             ["boutique", "Boutique", true],
             ["vinted", "Emails Vinted", canReadVinted],
+            ["clients", "Clients", canReadCustomers],
             ["rapports", "Rapports", canReadReports],
           ] as const)
             .filter(([, , visible]) => visible)
@@ -2443,7 +2452,7 @@ function AppContent({
             recherche d'article ni le bascule « En cours / Gagné » n'agissent
             sur son contenu.
           */}
-          {activeTab === "vinted" || activeTab === "rapports" ? null : activeTab !== "suivi" && activeTab !== "boutique" ? (
+          {activeTab === "vinted" || activeTab === "rapports" || activeTab === "clients" ? null : activeTab !== "suivi" && activeTab !== "boutique" ? (
             <div className="mb-6 space-y-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
               <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--input)] px-3.5">
                 <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -2591,6 +2600,12 @@ function AppContent({
             />
           ) : activeTab === "vinted" ? (
             <VintedMailbox canUpdate={canUpdateVinted} canManage={canManageVinted} />
+          ) : activeTab === "clients" ? (
+            <Customers
+              canCreate={canCreateCustomers}
+              canUpdate={canUpdateCustomers}
+              canDelete={canDeleteCustomers}
+            />
           ) : activeTab === "boutique" ? (
             <StorefrontSettings canManage={canPublish} />
           ) : (activeTab === "archives" ? archivedItems : items) === undefined ? (

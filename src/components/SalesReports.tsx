@@ -51,7 +51,7 @@ export function SalesReports({
   canEnterStore: boolean;
   canDeleteStore: boolean;
 }) {
-  const [channel, setChannel] = useState<"enligne" | "magasin">("enligne");
+  const [channel, setChannel] = useState<"enligne" | "magasin" | "analyse">("enligne");
   const years = useQuery(api.klydeReports.availableYears);
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -84,6 +84,7 @@ export function SalesReports({
         {([
           ["enligne", "Ventes en ligne"],
           ["magasin", "Magasin"],
+          ["analyse", "Analyse"],
         ] as const).map(([value, label]) => (
           <button
             key={value}
@@ -103,6 +104,8 @@ export function SalesReports({
 
       {channel === "magasin" ? (
         <StoreReports canEnter={canEnterStore} canDelete={canDeleteStore} />
+      ) : channel === "analyse" ? (
+        <AnalysisPanel />
       ) : (
         <>
       {/* ── Période ─────────────────────────────────────────────────────── */}
@@ -980,6 +983,301 @@ function StoreRevenueDialog({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─── Analyse : ce qui se vend, et en combien de temps ────────────────────── */
+
+/** Onglet « Analyse » : sa propre période, indépendante des autres onglets. */
+function AnalysisPanel() {
+  const currentYear = new Date().getFullYear();
+  const years = useQuery(api.klydeReports.availableYears);
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState<number | null>(null);
+  const [outlet, setOutlet] = useState<"klyd" | "mobifrip" | null>(null);
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[var(--muted-foreground)]">Année</span>
+          <select
+            value={year}
+            onChange={(event) => setYear(Number(event.target.value))}
+            className="h-10 rounded-lg border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+          >
+            {(years ?? [currentYear]).map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[var(--muted-foreground)]">Mois</span>
+          <select
+            value={month === null ? "" : month}
+            onChange={(event) =>
+              setMonth(event.target.value === "" ? null : Number(event.target.value))
+            }
+            className="h-10 rounded-lg border border-[var(--border)] bg-[var(--input)] px-3 text-sm"
+          >
+            <option value="">Toute l'année</option>
+            {MONTHS.map((label, index) => (
+              <option key={label} value={index}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] p-1">
+          {([
+            [null, "Les deux"],
+            ["mobifrip", "Mobifrip"],
+            ["klyd", "Klyd"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setOutlet(value)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-semibold transition-colors",
+                outlet === value
+                  ? "bg-[var(--primary)] text-white"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <SalesAnalysis year={year} month={month} outlet={outlet} />
+    </>
+  );
+}
+
+/** Durée en jours, arrondie à la demi-journée près sous 10 jours. */
+function days(value?: number) {
+  if (value === undefined) return "—";
+  const rounded = value < 10 ? Math.round(value * 10) / 10 : Math.round(value);
+  return `${rounded.toLocaleString("fr-FR")} j`;
+}
+
+/**
+ * Ce qui se vend le mieux, et en combien de temps.
+ *
+ * Un article de recyclerie est unique : classer les ventes par article n'aurait
+ * aucun sens, deux robes ne sont jamais le même produit. L'analyse porte donc
+ * sur ce qui se répète — catégorie, sous-catégorie, marque, état, taille.
+ */
+function SalesAnalysis({
+  year,
+  month,
+  outlet,
+}: {
+  year: number;
+  month: number | null;
+  outlet: "klyd" | "mobifrip" | null;
+}) {
+  const analysis = useQuery(api.klydeReports.salesAnalysis, { year, month, outlet });
+  const [dimension, setDimension] = useState<
+    "categories" | "subcategories" | "brands" | "conditions" | "sizes"
+  >("categories");
+
+  if (analysis === undefined) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Analyse des ventes
+      </div>
+    );
+  }
+
+  const rows = analysis[dimension];
+  const best = rows.length ? Math.max(...rows.map((row) => row.revenue)) : 0;
+  const bucketMax = Math.max(...analysis.delay.buckets.map((bucket) => bucket.count), 1);
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-4">
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+            Articles vendus
+          </p>
+          <p className="mt-1 text-2xl font-black text-[var(--primary)]">{analysis.salesCount}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            {structureName(outlet)} · {analysis.label}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+            Délai de vente médian
+          </p>
+          <p className="mt-1 text-2xl font-black">{days(analysis.delay.medianDays)}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Entre la mise en ligne et la vente
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+            Délai moyen
+          </p>
+          <p className="mt-1 text-2xl font-black">{days(analysis.delay.averageDays)}</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Sur {analysis.delay.measured} article{analysis.delay.measured > 1 ? "s" : ""} mesurable
+            {analysis.delay.measured > 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+            Délai inconnu
+          </p>
+          <p className="mt-1 text-2xl font-black">{analysis.delay.unknown}</p>
+          {/* Sans date de mise en ligne, aucun délai n'est calculable : le dire
+              évite de prendre la moyenne pour une vérité sur tout le stock. */}
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Articles vendus sans date de mise en ligne
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Ce qui se vend le mieux · {analysis.label}</h2>
+          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-[var(--border)] p-1">
+            {([
+              ["categories", "Catégorie"],
+              ["subcategories", "Sous-catégorie"],
+              ["brands", "Marque"],
+              ["conditions", "État"],
+              ["sizes", "Taille"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setDimension(value)}
+                className={cn(
+                  "rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                  dimension === value
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {rows.length === 0 ? (
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            Aucune vente sur cette période.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-1.5">
+            {rows.map((row) => (
+              <li key={row.label} className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+                <span className="w-40 shrink-0 truncate text-sm" title={row.label}>
+                  {row.label}
+                </span>
+                <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--muted)]">
+                  <span
+                    className="block h-full rounded-full bg-[var(--primary)]"
+                    style={{ width: best ? `${Math.round((row.revenue / best) * 100)}%` : "0%" }}
+                  />
+                </span>
+                <span className="w-16 shrink-0 text-right text-xs text-[var(--muted-foreground)]">
+                  {row.count} vendu{row.count > 1 ? "s" : ""}
+                </span>
+                <span className="w-20 shrink-0 text-right text-xs text-[var(--muted-foreground)]">
+                  {days(row.averageDays)}
+                </span>
+                <span className="w-24 shrink-0 text-right text-sm font-semibold">
+                  {euro(row.revenue)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+        <h2 className="text-sm font-semibold">Combien de temps un article reste en ligne</h2>
+        <ul className="mt-3 space-y-1.5">
+          {analysis.delay.buckets.map((bucket) => (
+            <li key={bucket.label} className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+              <span className="w-36 shrink-0 text-sm">{bucket.label}</span>
+              <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--muted)]">
+                <span
+                  className="block h-full rounded-full bg-[var(--primary)]"
+                  style={{ width: `${Math.round((bucket.count / bucketMax) * 100)}%` }}
+                />
+              </span>
+              <span className="w-20 shrink-0 text-right text-sm font-semibold">
+                {bucket.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {analysis.delay.fastest.length > 0 ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <DelayList title="Vendus le plus vite" entries={analysis.delay.fastest} />
+          <DelayList title="Les plus longs à partir" entries={analysis.delay.slowest} />
+        </div>
+      ) : null}
+
+      <p className="flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
+        <BarChart3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        Le délai court de la mise en ligne — première publication Vinted ou boutique — à
+        l'enregistrement de la vente. Un article vendu sans date de mise en ligne n'entre
+        dans aucune moyenne.
+      </p>
+    </>
+  );
+}
+
+function DelayList({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: Array<{
+    id: string;
+    title: string;
+    category: string;
+    brand?: string;
+    amount: number;
+    days?: number;
+  }>;
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <ul className="mt-3 divide-y divide-[var(--border)]">
+        {entries.map((entry) => (
+          <li key={entry.id} className="flex items-center gap-3 py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm">{entry.title}</span>
+              <span className="block truncate text-xs text-[var(--muted-foreground)]">
+                {[entry.brand, entry.category].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <span className="w-16 shrink-0 text-right text-sm font-semibold">
+              {days(entry.days)}
+            </span>
+            <span className="w-20 shrink-0 text-right text-xs text-[var(--muted-foreground)]">
+              {euro(entry.amount)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
