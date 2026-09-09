@@ -16,6 +16,7 @@ import {
   Crop,
   Download,
   Heart,
+  ImageDown,
   ImagePlus,
   Kanban,
   LayoutGrid,
@@ -50,6 +51,7 @@ import { HelpButton } from "./components/HelpButton";
 import { VintedMailbox } from "./components/VintedMailbox";
 import { SalesReports } from "./components/SalesReports";
 import { Customers } from "./components/Customers";
+import { PhotoRecompressModal } from "./components/PhotoRecompressModal";
 import { useKlydeCart } from "./lib/useKlydeCart";
 import { useUpload } from "./lib/useUpload";
 import { ProfileSync } from "./components/ProfileSync";
@@ -327,6 +329,16 @@ function formatPrice(value?: number) {
     currency: "EUR",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+/** Valeur retardée : utile pour ne pas relancer une requête à chaque frappe. */
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }
 
 function currentRoute(): ShopRoute | "" {
@@ -1121,6 +1133,8 @@ function ArticleThumb({ item }: { item: ListedItem }) {
     <img
       src={item.photoUrls[0] ?? ""}
       alt=""
+      loading="lazy"
+      decoding="async"
       className="aspect-square w-full rounded-t-md bg-[var(--muted)] object-cover"
     />
   );
@@ -1172,6 +1186,7 @@ function AppContent({
   const [form, setForm] = useState<FormState>(initialForm);
   const [editingId, setEditingId] = useState<Id<"klydeItems"> | null>(null);
   const [detailItemId, setDetailItemId] = useState<Id<"klydeItems"> | null>(null);
+  const [recompressOpen, setRecompressOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ListedItem | null>(null);
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
   const [shipmentNote, setShipmentNote] = useState("");
@@ -1251,16 +1266,36 @@ function AppContent({
 
   useEffect(() => { void ensurePoints({}); }, [ensurePoints]);
 
+  // La liste ne renvoie que la photo de couverture : les autres arrivent à
+  // l'ouverture de la fiche, et pour elle seule.
+  const editingPhotoUrls = useQuery(
+    api.klyde.photoUrls,
+    editingId ? { id: editingId } : "skip",
+  );
+  useEffect(() => {
+    if (!editingPhotoUrls) return;
+    setForm((current) =>
+      // Tant que la galerie n'a pas été retouchée : sinon un ajout local
+      // serait écrasé par les photos enregistrées.
+      current.photos.length === editingPhotoUrls.length
+        ? { ...current, previewUrls: editingPhotoUrls }
+        : current,
+    );
+  }, [editingPhotoUrls]);
+
+  // La recherche est serveur : sans ce délai, chaque frappe relançait un
+  // balayage du stock et le renvoi de toute la liste.
+  const debouncedSearch = useDebouncedValue(searchText, 300);
   const items = useQuery(
     api.klyde.list,
-    canRead ? { searchText: searchText || undefined } : "skip",
+    canRead ? { searchText: debouncedSearch || undefined } : "skip",
   );
   // Les archives vivent hors du stock : elles ne sont chargées qu'à l'ouverture
   // de leur page, avec la même recherche que le reste de l'app.
   const archivedItems = useQuery(
     api.klyde.list,
     canRead && activeTab === "archives"
-      ? { searchText: searchText || undefined, archived: true }
+      ? { searchText: debouncedSearch || undefined, archived: true }
       : "skip",
   );
 
@@ -1888,19 +1923,36 @@ function AppContent({
   const showSizeField = fieldRelevant("size", form.category, form.subcategory);
   const showMaterialField = fieldRelevant("material", form.category, form.subcategory);
 
-  const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => (
-    <button
-      type="button"
-      onClick={() => setActiveTab(tab)}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium",
-        activeTab === tab && "bg-[var(--sidebar-active)]",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
+  /**
+   * Entrée de la barre latérale, au même standard que les autres CRM du
+   * groupe : liseré d'accent sur l'onglet courant, survol franc sur les
+   * autres, et icône qui suit l'état plutôt que de rester grise.
+   */
+  const navButton = (tab: AppTab, icon: React.ReactNode, label: string) => {
+    const active = activeTab === tab;
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveTab(tab)}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg border-l-2 px-3 py-2.5 text-left text-sm font-medium transition-colors",
+          active
+            ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
+            : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--sidebar-active)] hover:text-[var(--foreground)]",
+        )}
+      >
+        <span
+          className={cn(
+            "shrink-0 transition-colors",
+            active ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]",
+          )}
+        >
+          {icon}
+        </span>
+        <span className="min-w-0 truncate">{label}</span>
+      </button>
+    );
+  };
 
   /** Met un article de côté : il quitte le stock et la boutique, sans se perdre. */
   async function archiveItem(id: Id<"klydeItems">) {
@@ -2096,7 +2148,7 @@ function AppContent({
     <tr
       key={item._id}
       onClick={() => openDetail(item, "article")}
-      className="cursor-pointer bg-[var(--background)] hover:bg-[var(--card)]"
+      className="cursor-pointer bg-[var(--background)] transition-colors hover:bg-[var(--card)]"
     >
       {canPublish ? (
         <td className="w-12 px-4 py-3" onClick={(event) => event.stopPropagation()}>
@@ -2114,7 +2166,7 @@ function AppContent({
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--muted)]">
             {item.photoUrls[0] ? (
-              <img src={item.photoUrls[0]} alt={item.title} className="h-full w-full object-cover" />
+              <img src={item.photoUrls[0]} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
             ) : (
               <Package className="h-4 w-4 text-[var(--muted-foreground)]" />
             )}
@@ -2219,7 +2271,7 @@ function AppContent({
       ) : null}
       <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--muted)]">
         {item.photoUrls[0] ? (
-          <img src={item.photoUrls[0]} alt="" className="h-full w-full object-cover" />
+          <img src={item.photoUrls[0]} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         ) : (
           <Package className="h-5 w-5 text-[var(--muted-foreground)]" />
         )}
@@ -2259,6 +2311,8 @@ function AppContent({
       <img
         src={item.photoUrls[0] ?? ""}
         alt=""
+        loading="lazy"
+        decoding="async"
         className="h-14 w-14 rounded-md bg-[var(--muted)] object-cover"
       />
       <div className="min-w-0">
@@ -2325,6 +2379,9 @@ function AppContent({
   return (
     <div className="flex min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]">
       <HelpButton />
+      {recompressOpen ? (
+        <PhotoRecompressModal onClose={() => setRecompressOpen(false)} />
+      ) : null}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] md:flex">
         <div className="flex items-center justify-between gap-2 p-4">
           <Logo theme={theme} />
@@ -2345,7 +2402,7 @@ function AppContent({
           <button
             type="button"
             onClick={toggleTheme}
-            className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium"
+            className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--sidebar-active)]"
           >
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             {theme === "dark" ? "Mode clair" : "Mode sombre"}
@@ -2353,7 +2410,7 @@ function AppContent({
           <button
             type="button"
             onClick={() => goTo("/boutique")}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--primary)] px-3 text-sm font-semibold text-white"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99]"
           >
             <ShoppingBag className="h-4 w-4" />
             Voir la boutique
@@ -2361,7 +2418,7 @@ function AppContent({
           <button
             type="button"
             onClick={() => goTo("/profil")}
-            className="flex w-full items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left"
+            className="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--sidebar-active)]"
           >
             <KlydeUserAvatar />
             <span className="min-w-0">
@@ -2380,11 +2437,22 @@ function AppContent({
             {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "clients" ? "Clients" : activeTab === "rapports" ? "Rapports" : activeTab === "archives" ? "Archives" : "Suivi"}
           </h1>
           <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
+            {canUpdate && activeTab === "stock" ? (
+              <button
+                type="button"
+                onClick={() => setRecompressOpen(true)}
+                title="Recompresser les photos trop lourdes déjà en ligne"
+                className="hidden rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)] lg:inline-flex lg:items-center lg:gap-2"
+              >
+                <ImageDown className="h-4 w-4" />
+                Alléger les photos
+              </button>
+            ) : null}
             {canCreate ? (
               <button
                 type="button"
                 onClick={openNewArticle}
-                className="rounded-md bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white sm:px-4"
+                className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] sm:px-4"
               >
                 Nouvel article
               </button>
@@ -2437,8 +2505,10 @@ function AppContent({
                 type="button"
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "shrink-0 whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-sm font-medium",
-                  activeTab === tab && "border-[var(--primary)] bg-[var(--muted)]",
+                  "shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors",
+                  activeTab === tab
+                    ? "border-[var(--primary)] bg-[var(--muted)] text-[var(--primary)]"
+                    : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
                 )}
               >
                 {label}
