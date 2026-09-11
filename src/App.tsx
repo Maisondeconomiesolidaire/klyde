@@ -1,6 +1,6 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
-import { AuthSwitch } from "./components/ui/auth-switch";
+import { AuthServiceFallback, AuthSwitch } from "./components/ui/auth-switch";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Archive,
@@ -5339,6 +5339,22 @@ function KlydeProfilePage() {
   );
 }
 
+/** Keep the app's profile hash separate from Clerk's verification-step hashes. */
+function ProfileSignInRedirect() {
+  useEffect(() => {
+    window.location.replace(`/?auth=signin&redirect_url=${encodeURIComponent("/#/profil")}`);
+  }, []);
+
+  return (
+    <main className="flex min-h-screen items-center justify-center">
+      <p role="status" className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Ouverture du formulaire de connexion…
+      </p>
+    </main>
+  );
+}
+
 export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
   const { theme, toggle: toggleTheme } = useKlydeTheme();
@@ -5356,8 +5372,9 @@ export default function App() {
       <>
         <ProfileSync app="klyde" />
         <UpdateAvailableBanner appName="Klyde" />
+        <AuthServiceFallback />
         <SignedOut>
-          <AuthSwitch appName="Klyde" logoSrc="/logo-light.png" />
+          <ProfileSignInRedirect />
         </SignedOut>
         <SignedIn>
           <KlydeProfilePage />
@@ -5380,6 +5397,7 @@ export default function App() {
     <>
       <ProfileSync app="klyde" />
         <UpdateAvailableBanner appName="Klyde" />
+      <AuthServiceFallback />
       <SignedOut>
         <AuthSwitch appName="Klyde" logoSrc="/logo-light.png" />
       </SignedOut>
