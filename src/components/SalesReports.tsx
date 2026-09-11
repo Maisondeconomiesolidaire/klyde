@@ -613,13 +613,28 @@ function StoreReports({
         </div>
       ) : (
         <>
+          {report.annualTotals.length > 0 ? (
+            <div className="rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-4">
+              <h2 className="text-sm font-semibold">Totaux annuels magasin · {year}</h2>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {report.annualTotals.map((annual) => (
+                  <div key={annual.site}>
+                    <p className="text-sm text-[var(--muted-foreground)]">{annual.site === "76" ? "Gournay · Recyclerie 76" : "Lachapelle · Recyclerie 60"}</p>
+                    <p className="text-2xl font-bold">{euro(annual.amount)}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-[var(--muted-foreground)]">Montants annuels de référence, sans répartition par mois ou par semaine. Les relevés détaillés éventuels ne s'ajoutent pas une seconde fois à ces totaux.</p>
+              {month !== null ? <button type="button" onClick={() => setMonth(null)} className="mt-3 text-sm font-semibold text-[var(--primary)] underline">Voir toute l'année {year}</button> : null}
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-4">
               <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
                 Chiffre d'affaires magasin
               </p>
               <p className="mt-1 text-2xl font-black text-[var(--primary)]">
-                {euro(report.revenue)}
+                {month !== null && report.annualTotals.length > 0 && report.entries.length === 0 ? "Non renseigné" : euro(report.revenue)}
               </p>
               <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                 {site ? SITE_LABELS[site] : "Les deux recycleries"} · {report.label}
@@ -633,7 +648,7 @@ function StoreReports({
                 <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
                   {SITE_LABELS[value]}
                 </p>
-                <p className="mt-1 text-2xl font-black">{euro(report.bySite[value])}</p>
+                <p className="mt-1 text-2xl font-black">{month !== null && report.annualTotals.some((annual) => annual.site === value) && !report.entries.some((entry) => entry.site === value) ? "Non renseigné" : euro(report.bySite[value])}</p>
               </div>
             ))}
           </div>
@@ -643,7 +658,7 @@ function StoreReports({
             <h2 className="text-sm font-semibold">
               Par semaine · {report.label}
             </h2>
-            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            {report.annualTotals.length > 0 && report.entries.length === 0 ? <p className="mt-3 text-sm text-[var(--muted-foreground)]">Détail hebdomadaire non renseigné.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-4">
               {STORE_WEEKS.map((week, index) => (
                 <div
                   key={week}
@@ -653,13 +668,14 @@ function StoreReports({
                   <p className="text-lg font-bold">{euro(report.weekly[index])}</p>
                 </div>
               ))}
-            </div>
+            </div>}
           </div>
 
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
             <h2 className="text-sm font-semibold">
               Chiffre d'affaires magasin mois par mois · {year}
             </h2>
+            {report.annualTotals.length > 0 ? <p className="mt-2 text-xs text-[var(--muted-foreground)]">Détail mensuel saisi uniquement ; « — » indique un mois non renseigné.</p> : null}
             <ul className="mt-3 space-y-1.5">
               {report.monthly.map((amount, index) => (
                 <li
@@ -690,7 +706,7 @@ function StoreReports({
                       amount > 0 ? "font-semibold" : "text-[var(--muted-foreground)]",
                     )}
                   >
-                    {euro(amount)}
+                    {report.annualTotals.length > 0 && !report.monthlyHasDetail[index] ? "—" : euro(amount)}
                   </span>
                 </li>
               ))}
