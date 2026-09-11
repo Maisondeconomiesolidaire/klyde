@@ -45,7 +45,9 @@ export function Customers({
   canDelete: boolean;
 }) {
   const data = useQuery(api.klydeCustomers.list);
-  const remove = useMutation(api.klydeCustomers.remove);
+  const remove = useMutation(api.klydeCustomers.removeCustomer);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [source, setSource] = useState<"tous" | Customer["source"]>("tous");
   const [formOpen, setFormOpen] = useState(false);
@@ -71,6 +73,20 @@ export function Customers({
         .some((value) => value!.toLocaleLowerCase("fr-FR").includes(needle));
     });
   }, [data, search, source]);
+
+  async function deleteCustomer(row: Customer) {
+    if (deleting || !window.confirm(`Supprimer « ${row.name} » de la liste des clients ? Les emails et les ventes seront conservés.`)) return;
+    setDeleting(row.key);
+    setDeleteError(null);
+    try {
+      await remove({ key: row.key });
+      if (openKey === row.key) setOpenKey(null);
+    } catch {
+      setDeleteError("Suppression impossible. Veuillez réessayer.");
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   const opened = visible.find((row) => row.key === openKey) ?? null;
 
@@ -123,6 +139,8 @@ export function Customers({
           </button>
         ) : null}
       </div>
+
+      {deleteError ? <p role="alert" className="text-sm text-red-600">{deleteError}</p> : null}
 
       {data === undefined ? (
         <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
@@ -226,17 +244,16 @@ export function Customers({
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                           ) : null}
-                          {canDelete && row.manualId ? (
+                          {canDelete ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                void remove({ id: row.manualId as Id<"klydeCustomers"> })
-                              }
+                              onClick={() => void deleteCustomer(row)}
+                              disabled={deleting !== null}
                               className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-                              aria-label="Supprimer la fiche"
-                              title="Supprimer la fiche saisie à la main"
+                              aria-label={`Supprimer ${row.name}`}
+                              title="Supprimer le client"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              {deleting === row.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                             </button>
                           ) : null}
                         </div>
@@ -250,8 +267,8 @@ export function Customers({
 
           <p className="text-xs text-[var(--muted-foreground)]">
             Les clients « Depuis Vinted » sont reconstitués à la lecture des emails de vente :
-            ils se mettent à jour d'eux-mêmes et ne peuvent pas être supprimés. Seules les
-            fiches saisies à la main le sont.
+            ils se mettent à jour automatiquement. Supprimer un client le retire de cette liste
+            sans effacer ses emails ni ses ventes.
           </p>
         </>
       )}
