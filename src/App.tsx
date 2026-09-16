@@ -1191,6 +1191,7 @@ function AppContent({
   const [recompressOpen, setRecompressOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ListedItem | null>(null);
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
+  const [viewsAtSaleDraft, setViewsAtSaleDraft] = useState("");
   const [shipmentNote, setShipmentNote] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [articleSheetOpen, setArticleSheetOpen] = useState(false);
@@ -1226,6 +1227,7 @@ function AppContent({
   const setArchived = useMutation(api.klyde.setArchived);
   const advanceWorkflow = useMutation(api.klyde.advanceWorkflow);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
+  const setViewsAtSale = useMutation(api.klyde.setViewsAtSale);
   const moveToStockB = useMutation(api.klyde.moveToStockB);
   const moveToShop = useMutation(api.klyde.moveToShop);
   const extendVintedListing = useMutation(api.klyde.extendVintedListing);
@@ -1509,11 +1511,13 @@ function AppContent({
     }
     setDetailItemId(item._id);
     setTrackingNoteDraft(item.trackingNotes ?? "");
+    setViewsAtSaleDraft(item.viewsAtSale != null ? String(item.viewsAtSale) : "");
   }
 
   function closeDetail() {
     setDetailItemId(null);
     setTrackingNoteDraft("");
+    setViewsAtSaleDraft("");
   }
 
   function removePhoto(index: number) {
@@ -1664,6 +1668,22 @@ function AppContent({
         id: detailItem._id,
         trackingNotes: trackingNoteDraft || undefined,
       });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveViewsAtSale() {
+    if (!detailItem) return;
+    setError(null);
+    setBusy("views-at-sale");
+    try {
+      await setViewsAtSale({
+        id: detailItem._id,
+        viewsAtSale: asNumber(viewsAtSaleDraft),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Enregistrement du nombre de vues impossible.");
     } finally {
       setBusy(null);
     }
@@ -2952,7 +2972,6 @@ function AppContent({
                     ["Matière", detailItem.material ?? "-"],
                     ["Référence", detailItem.sku ?? "-"],
                     ["Vinted", detailItem.vinted ? "Oui" : "Non"],
-                    ["Vues à la vente", detailItem.viewsAtSale != null ? `${detailItem.viewsAtSale.toLocaleString("fr-FR")} vues` : "-"],
                     ["Quantité", String(detailItem.quantity)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md border border-[var(--border)] p-3">
@@ -2960,6 +2979,45 @@ function AppContent({
                       <div className="mt-1 font-medium">{value}</div>
                     </div>
                   ))}
+                </div>
+
+                <div className="grid gap-2 rounded-md border border-[var(--border)] p-3">
+                  <label className="text-sm font-medium" htmlFor="won-item-views">
+                    Vues au moment de la vente
+                  </label>
+                  {canUpdate ? (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                        <input
+                          id="won-item-views"
+                          className="h-10 min-w-0 flex-1 bg-transparent text-base font-semibold text-[var(--foreground)] outline-none"
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          step="1"
+                          value={viewsAtSaleDraft}
+                          onChange={(event) => setViewsAtSaleDraft(event.target.value)}
+                          placeholder="Ex. 102"
+                        />
+                        <span className="text-sm font-semibold text-[var(--muted-foreground)]">vues</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void saveViewsAtSale()}
+                        disabled={busy === "views-at-sale"}
+                        className="h-10 rounded-md bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {busy === "views-at-sale" ? "Enregistrement…" : "Enregistrer"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="font-medium">
+                      {detailItem.viewsAtSale != null ? `${detailItem.viewsAtSale.toLocaleString("fr-FR")} vues` : "Non renseigné"}
+                    </p>
+                  )}
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Ce champ reste modifiable après le passage de l'article dans « Gagné ».
+                  </p>
                 </div>
 
                 <div className="grid gap-2">
