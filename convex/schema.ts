@@ -1673,6 +1673,10 @@ export default defineSchema(
    * sont. Même logique que la boîte Gmail de Klyd.
    */
   socialFacebookPages: defineTable({
+    profileImageUrl: v.optional(v.string()),
+    profileCheckedAt: v.optional(v.number()),
+    instagramProfileImageUrl: v.optional(v.string()),
+    instagramProfileCheckedAt: v.optional(v.number()),
     pageId: v.string(),
     name: v.string(),
     accessToken: v.string(),
@@ -1689,7 +1693,49 @@ export default defineSchema(
   }).index("by_pageId", ["pageId"]),
 
   /** Publications Facebook émises depuis Mes Outils, pour le suivi. */
+  socialAiDrafts: defineTable({
+    authorClerkId: v.string(), keywords: v.string(), networks: v.array(v.string()),
+    pageNames: v.array(v.string()), model: v.string(), createdAt: v.number(),
+    status: v.union(v.literal("generating"), v.literal("ready"), v.literal("failed")),
+    text: v.optional(v.string()), error: v.optional(v.string()),
+    inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
+  }).index("by_author", ["authorClerkId", "createdAt"]),
+
+  socialSyncState: defineTable({
+    key: v.string(), startedAt: v.number(), leaseUntil: v.number(),
+    finishedAt: v.optional(v.number()), lastSuccessAt: v.optional(v.number()),
+    errors: v.optional(v.array(v.string())), imported: v.optional(v.number()), removed: v.optional(v.number()),
+  }).index("by_key", ["key"]),
+
+  socialCompositions: defineTable({
+    requestKey: v.string(),
+    message: v.string(),
+    images: v.array(v.id("_storage")),
+    authorClerkId: v.string(),
+    authorName: v.string(),
+    scheduledFor: v.optional(v.number()),
+    mesoutilsPostId: v.optional(v.id("posts")),
+    createdAt: v.number(),
+  }).index("by_requestKey", ["requestKey"]),
+
+  socialDeliveries: defineTable({
+    compositionId: v.id("socialCompositions"),
+    network: v.union(v.literal("facebook"), v.literal("instagram")),
+    targetId: v.string(),
+    targetName: v.string(),
+    status: v.union(v.literal("scheduled"), v.literal("publishing"), v.literal("published"), v.literal("failed"), v.literal("cancelled")),
+    scheduledFor: v.number(),
+    schedulerId: v.optional(v.id("_scheduled_functions")),
+    postId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+  }).index("by_composition", ["compositionId"]).index("by_date", ["scheduledFor"]).index("by_target", ["targetId"]),
+
   socialFacebookPosts: defineTable({
+    remotePermalink: v.optional(v.string()),
+    importedFromNetwork: v.optional(v.boolean()),
+    composerId: v.optional(v.id("socialCompositions")),
+    sourcePostId: v.optional(v.id("posts")),
     eventId: v.optional(v.id("events")),
     /** Évènement du calendrier Recyclerie, quand la publication vient de là. */
     recycappEventId: v.optional(v.id("recycappCalendarEvents")),
@@ -1709,7 +1755,12 @@ export default defineSchema(
     createdAt: v.number(),
   })
     .index("by_event", ["eventId"])
-    .index("by_recycappEvent", ["recycappEventId"]),
+    .index("by_recycappEvent", ["recycappEventId"])
+    .index("by_composer", ["composerId"])
+    .index("by_pageId", ["pageId"])
+    .index("by_postId", ["postId"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_scheduledFor", ["scheduledFor"]),
 
   /** Espace partage — bons plans internes (prêt, don, vente, échange). */
   dealPosts: defineTable({
@@ -2001,6 +2052,8 @@ export default defineSchema(
     // Prix réellement encaissé. Il peut être inférieur au prix affiché après
     // acceptation d'une offre ; c'est cette valeur qui sert au chiffre d'affaires.
     actualSalePrice: v.optional(v.number()),
+    /** Nombre de vues affiché par Vinted au moment où l'article est vendu. */
+    viewsAtSale: v.optional(v.number()),
     parcelSize: v.optional(v.string()),
     gender: v.optional(v.string()),
     style: v.optional(v.string()),
