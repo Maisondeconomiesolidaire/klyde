@@ -309,6 +309,9 @@ export function SalesReports({
                       <span className="w-16 shrink-0 text-right text-xs text-[var(--muted-foreground)]">
                         {weight(sale.weightKg)}
                       </span>
+                      <span className="w-20 shrink-0 text-right text-xs text-[var(--muted-foreground)]">
+                        {sale.viewsAtSale != null ? `${sale.viewsAtSale.toLocaleString("fr-FR")} vues` : "—"}
+                      </span>
                       <span className="w-20 shrink-0 text-right text-sm font-semibold">
                         {euro(sale.amount)}
                       </span>
@@ -1120,7 +1123,7 @@ function SalesAnalysis({
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-4">
           <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
             Articles vendus
@@ -1137,6 +1140,17 @@ function SalesAnalysis({
           <p className="mt-1 text-2xl font-black">{days(analysis.delay.medianDays)}</p>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">
             Entre la mise en ligne et la vente
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+            Vues avant vente
+          </p>
+          <p className="mt-1 text-2xl font-black">
+            {analysis.views.average != null ? analysis.views.average.toLocaleString("fr-FR") : "—"}
+          </p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Moyenne sur {analysis.views.measured} article{analysis.views.measured > 1 ? "s" : ""} · médiane {analysis.views.median?.toLocaleString("fr-FR") ?? "—"}
           </p>
         </div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">

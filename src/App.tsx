@@ -88,6 +88,7 @@ type FormState = {
   material: string;
   price: string;
   actualSalePrice: string;
+  viewsAtSale: string;
   parcelSize: string;
   gender: string;
   style: string;
@@ -125,6 +126,7 @@ const initialForm: FormState = {
   material: "",
   price: "",
   actualSalePrice: "",
+  viewsAtSale: "",
   parcelSize: "Moyen",
   gender: "",
   style: "",
@@ -1455,6 +1457,7 @@ function AppContent({
       material: item.material ?? "",
       price: item.price != null ? String(item.price) : "",
       actualSalePrice: item.actualSalePrice ? String(item.actualSalePrice) : "",
+      viewsAtSale: item.viewsAtSale != null ? String(item.viewsAtSale) : "",
       parcelSize: item.parcelSize ?? "Moyen",
       gender: item.gender ?? "",
       style: item.style ?? "",
@@ -1803,6 +1806,7 @@ function AppContent({
       material: (showMaterialField && form.material) || undefined,
       price: asNumber(form.price),
       actualSalePrice: asNumber(form.actualSalePrice),
+      viewsAtSale: asNumber(form.viewsAtSale),
       parcelSize: form.parcelSize || undefined,
       gender: form.gender || undefined,
       style: form.style || undefined,
@@ -2948,6 +2952,7 @@ function AppContent({
                     ["Matière", detailItem.material ?? "-"],
                     ["Référence", detailItem.sku ?? "-"],
                     ["Vinted", detailItem.vinted ? "Oui" : "Non"],
+                    ["Vues à la vente", detailItem.viewsAtSale != null ? `${detailItem.viewsAtSale.toLocaleString("fr-FR")} vues` : "-"],
                     ["Quantité", String(detailItem.quantity)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md border border-[var(--border)] p-3">
@@ -3255,7 +3260,7 @@ function AppContent({
                 const steps = [
                   { status: "stock", label: "Article en stock", detail: "Fiche article et photos enregistrées." },
                   { status: "en_ligne", label: "Mis en ligne sur Vinted", detail: sheetItem.vintedAt ? `En ligne depuis ${vintedDaysOnline(sheetItem.vintedAt)} jour${vintedDaysOnline(sheetItem.vintedAt) === 1 ? "" : "s"}.` : "Prix affiché et case Vinted requis." },
-                  { status: "en_cours_envoi", label: "Vendu", detail: "Prix de vente réel requis." },
+                  { status: "en_cours_envoi", label: "Vendu", detail: "Renseignez le prix réel et le nombre de vues de l'annonce." },
                   { status: "envoye", label: "Expédié", detail: "Numéro de suivi ou note d'expédition requis." },
                   { status: "gagne", label: "Acheteur a accepté l'article", detail: "Vente définitivement gagnée." },
                 ] as const;
@@ -3305,13 +3310,22 @@ function AppContent({
                             ) : null}
                           </div>
                           {step.status === "en_cours_envoi" && next ? (
-                            <label className="mt-3 grid gap-1.5 pl-9 text-xs font-medium text-[var(--muted-foreground)]">
-                              Prix de vente réel
-                              <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
-                                <input className="h-10 w-full bg-transparent text-base font-semibold text-[var(--foreground)] outline-none" inputMode="decimal" value={form.actualSalePrice} onChange={(event) => update("actualSalePrice", event.target.value)} placeholder="Prix encaissé" />
-                                <span className="font-semibold text-[var(--muted-foreground)]">€</span>
-                              </div>
-                            </label>
+                            <div className="mt-3 grid gap-3 pl-9 sm:grid-cols-2">
+                              <label className="grid gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                                Prix de vente réel
+                                <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                                  <input className="h-10 w-full bg-transparent text-base font-semibold text-[var(--foreground)] outline-none" inputMode="decimal" value={form.actualSalePrice} onChange={(event) => update("actualSalePrice", event.target.value)} placeholder="Prix encaissé" />
+                                  <span className="font-semibold text-[var(--muted-foreground)]">€</span>
+                                </div>
+                              </label>
+                              <label className="grid gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                                Vues au moment de la vente
+                                <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                                  <input className="h-10 w-full bg-transparent text-base font-semibold text-[var(--foreground)] outline-none" type="number" inputMode="numeric" min="0" step="1" value={form.viewsAtSale} onChange={(event) => update("viewsAtSale", event.target.value)} placeholder="Ex. 102" />
+                                  <span className="font-semibold text-[var(--muted-foreground)]">vues</span>
+                                </div>
+                              </label>
+                            </div>
                           ) : null}
                           {step.status === "envoye" && next ? (
                             <label className="mt-3 grid gap-1.5 pl-9 text-xs font-medium text-[var(--muted-foreground)]">
@@ -3378,6 +3392,14 @@ function AppContent({
                     <span className="text-xl font-semibold text-[var(--muted-foreground)]">€</span>
                   </div>
                   <span className="text-xs text-[var(--muted-foreground)]">À renseigner si une offre est acceptée ; utilisé pour le chiffre d’affaires.</span>
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-[var(--muted-foreground)]">Vues au moment de la vente</span>
+                  <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                    <input className="h-12 w-full bg-transparent text-2xl font-bold outline-none" type="number" inputMode="numeric" min="0" step="1" value={form.viewsAtSale} onChange={(event) => update("viewsAtSale", event.target.value)} placeholder="102" />
+                    <span className="text-sm font-semibold text-[var(--muted-foreground)]">vues</span>
+                  </div>
+                  <span className="text-xs text-[var(--muted-foreground)]">Recopiez le compteur affiché sur Vinted lorsque l'article est vendu.</span>
                 </label>
               </div>
 
@@ -5407,4 +5429,3 @@ export default function App() {
     </>
   );
 }
-
