@@ -1212,6 +1212,8 @@ function AppContent({
   const [selectedVinted, setSelectedVinted] = useState<"" | "yes" | "no">("");
   const [stockView, setStockView] = useState<"list" | "grid">("list");
   const [selectedItemIds, setSelectedItemIds] = useState<Set<Id<"klydeItems">>>(() => new Set());
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
+  const bulkActionsRef = useRef<HTMLDivElement>(null);
   // Volet « Nouvel article » : publier directement sur la boutique.
   const [publishOnCreate, setPublishOnCreate] = useState(false);
   const [draggedId, setDraggedId] = useState<Id<"klydeItems"> | null>(null);
@@ -1412,7 +1414,26 @@ function AppContent({
 
   useEffect(() => {
     setSelectedItemIds(new Set());
+    setBulkActionsOpen(false);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!bulkActionsOpen) return;
+    function closeBulkActions(event: MouseEvent) {
+      if (!bulkActionsRef.current?.contains(event.target as Node)) {
+        setBulkActionsOpen(false);
+      }
+    }
+    function closeBulkActionsOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setBulkActionsOpen(false);
+    }
+    document.addEventListener("mousedown", closeBulkActions);
+    document.addEventListener("keydown", closeBulkActionsOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeBulkActions);
+      document.removeEventListener("keydown", closeBulkActionsOnEscape);
+    };
+  }, [bulkActionsOpen]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -1636,28 +1657,65 @@ function AppContent({
     });
   }
 
-  async function publishSelectedOnBoutique() {
-    const itemsToPublish = selectedItems.filter((item) => !item.publishedOnBoutique);
-    const itemsWithoutPrice = itemsToPublish.filter((item) => item.price == null);
-    if (itemsWithoutPrice.length > 0) {
-      setError(`${itemsWithoutPrice.length} article${itemsWithoutPrice.length > 1 ? "s n'ont" : " n'a"} pas de prix : renseignez-les avant la publication Boutique.`);
-      return;
-    }
-    if (itemsToPublish.length === 0) return;
-    setBusy("bulk-boutique-publish");
+  async function runBulkAction(
+    actionKey: string,
+    actionLabel: string,
+    targets: ListedItem[],
+    operation: (item: ListedItem) => Promise<unknown>,
+  ) {
+    if (targets.length === 0) return;
+    setBulkActionsOpen(false);
+    setBusy(`bulk-${actionKey}`);
     setError(null);
     try {
-      await Promise.all(itemsToPublish.map((item) => setBoutiquePublished({ id: item._id, published: true })));
+      const results = await Promise.allSettled(targets.map(operation));
+      const completedIds = targets
+        .filter((_, index) => results[index].status === "fulfilled")
+        .map((item) => item._id);
       setSelectedItemIds((current) => {
         const next = new Set(current);
-        itemsToPublish.forEach((item) => next.delete(item._id));
+        completedIds.forEach((id) => next.delete(id));
         return next;
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Publication Boutique des articles sélectionnés impossible.");
+      const failedCount = results.length - completedIds.length;
+      if (failedCount > 0) {
+        setError(
+          `Échec de l’action « ${actionLabel} » pour ${failedCount} article${failedCount === 1 ? "" : "s"}.`,
+        );
+      }
     } finally {
       setBusy(null);
     }
+  }
+
+  function updateSelectedStatus(status: KlydeStatus, actionLabel: string) {
+    return runBulkAction(
+      status,
+      actionLabel,
+      selectedItems,
+      (item) => updateStatus({ id: item._id, status }),
+    );
+  }
+
+  async function publishSelectedOnBoutique(published: boolean) {
+    const itemsToPublish = selectedItems.filter((item) => !item.publishedOnBoutique);
+    const targets = published
+      ? itemsToPublish
+      : selectedItems.filter((item) => item.publishedOnBoutique);
+    if (published) {
+      const itemsWithoutPrice = targets.filter((item) => item.price == null);
+      if (itemsWithoutPrice.length > 0) {
+        setBulkActionsOpen(false);
+        setError(`${itemsWithoutPrice.length} article${itemsWithoutPrice.length > 1 ? "s n'ont" : " n'a"} pas de prix : renseignez-les avant la publication Boutique.`);
+        return;
+      }
+    }
+    await runBulkAction(
+      published ? "boutique-publish" : "boutique-unpublish",
+      published ? "Publier sur la boutique" : "Retirer de la boutique",
+      targets,
+      (item) => setBoutiquePublished({ id: item._id, published }),
+    );
   }
 
   async function saveTrackingNotes() {
@@ -2746,27 +2804,125 @@ function AppContent({
                   </div>
                 ) : null}
                 {canPublish && selectedItems.length > 0 ? (
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--primary)]/25 bg-[var(--primary)]/5 px-4 py-3">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      {selectedItems.length} article{selectedItems.length > 1 ? "s" : ""} sélectionné{selectedItems.length > 1 ? "s" : ""}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedItemIds(new Set())}
-                        className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-                      >
-                        Désélectionner
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void publishSelectedOnBoutique()}
-                        disabled={busy === "bulk-boutique-publish" || selectedItems.every((item) => item.publishedOnBoutique)}
-                        className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {busy === "bulk-boutique-publish" ? "Publication…" : "Mettre en ligne sur la boutique"}
-                      </button>
+                  <div className="mb-4 rounded-2xl border border-[var(--primary)]/25 bg-[var(--primary)]/5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[var(--foreground)]">
+                        {selectedItems.length} article{selectedItems.length > 1 ? "s" : ""} sélectionné{selectedItems.length > 1 ? "s" : ""}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedItemIds(new Set())}
+                          disabled={Boolean(busy?.startsWith("bulk-"))}
+                          className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-50"
+                        >
+                          Désélectionner
+                        </button>
+                        <div ref={bulkActionsRef} className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setBulkActionsOpen((current) => !current)}
+                            disabled={Boolean(busy?.startsWith("bulk-"))}
+                            aria-haspopup="menu"
+                            aria-expanded={bulkActionsOpen}
+                            className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {busy?.startsWith("bulk-") ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : null}
+                            Actions
+                            <ChevronDown className={cn("h-4 w-4 transition-transform", bulkActionsOpen && "rotate-180")} />
+                          </button>
+                          {bulkActionsOpen ? (
+                            <div
+                              role="menu"
+                              className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] py-1 shadow-xl"
+                            >
+                              {canUpdate ? (
+                                <>
+                                  <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+                                    Statut des articles
+                                  </p>
+                                  {[
+                                    ["Mettre en ligne sur Vinted", "en_ligne"],
+                                    ["Marquer comme vendu", "en_cours_envoi"],
+                                    ["Marquer comme expédié", "envoye"],
+                                    ["Marquer comme gagné", "gagne"],
+                                    ["Remettre en stock", "stock"],
+                                  ].map(([label, status]) => (
+                                    <button
+                                      key={status}
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => void updateSelectedStatus(status as KlydeStatus, label)}
+                                      className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)]"
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                  <div className="my-1 border-t border-[var(--border)]" />
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => void runBulkAction("stock-b", "Déplacer vers le Stock B", selectedItems, (item) => moveToStockB({ id: item._id }))}
+                                    className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)]"
+                                  >
+                                    Déplacer vers le Stock B
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => void runBulkAction("shop", "Mettre en magasin", selectedItems, (item) => moveToShop({ id: item._id }))}
+                                    className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)]"
+                                  >
+                                    Mettre en magasin
+                                  </button>
+                                </>
+                              ) : null}
+                              <p className="border-t border-[var(--border)] px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
+                                Boutique
+                              </p>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => void publishSelectedOnBoutique(true)}
+                                disabled={selectedItems.every((item) => item.publishedOnBoutique)}
+                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Publier sur la boutique
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => void publishSelectedOnBoutique(false)}
+                                disabled={selectedItems.every((item) => !item.publishedOnBoutique)}
+                                className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Retirer de la boutique
+                              </button>
+                              {canUpdate ? (
+                                <>
+                                  <div className="my-1 border-t border-[var(--border)]" />
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => void runBulkAction("archive", "Archiver", selectedItems, (item) => setArchived({ id: item._id, archived: true }))}
+                                    className="block w-full px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-500/10"
+                                  >
+                                    Archiver
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
+                    {error ? (
+                      <p role="alert" className="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {error}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
                 {stockView === "grid" ? (
