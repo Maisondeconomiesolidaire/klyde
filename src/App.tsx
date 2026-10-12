@@ -1536,6 +1536,8 @@ function AppContent({
     setActivePhotoIndex(0);
     setJustSaved(false);
     setShipmentNote(item.trackingNotes ?? "");
+    setReturnAmount(item.returnAmount !== undefined ? String(item.returnAmount) : "");
+    setReturnNote(item.returnNote ?? "");
     setError(null);
     setArticleSheetOpen(true);
   }
@@ -3057,14 +3059,30 @@ function AppContent({
                   <div key={item._id} className="grid gap-2">
                     {articleCard(item, false, "demande")}
                     {canUpdate ? (
-                      <button
-                        type="button"
-                        onClick={() => void moveItem(item._id, "envoye")}
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold text-[var(--foreground)]"
-                      >
-                        <ArrowLeft className="h-4 w-4" />
-                        Annuler « gagné »
-                      </button>
+                      <div className="grid gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void moveItem(item._id, "envoye")}
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold text-[var(--foreground)]"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          Annuler « gagné »
+                        </button>
+                        {/* Un retour se constate ici, sur la vente gagnée :
+                            l'ouvrir depuis la fiche seule le rendait introuvable. */}
+                        <button
+                          type="button"
+                          onClick={() => openArticleSheet(item)}
+                          className={cn(
+                            "inline-flex h-9 items-center justify-center gap-2 rounded-md border text-sm font-semibold",
+                            item.returnKind
+                              ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                              : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]",
+                          )}
+                        >
+                          {item.returnKind ? RETURN_LABELS[item.returnKind] : "Retour ou remboursement"}
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                 ))}
@@ -3649,7 +3667,7 @@ function AppContent({
                     {/* Vente annulée : l'article revient, ou l'acheteur est
                         remboursé. Dans les trois cas la vente sort du chiffre
                         d'affaires ; seul change ce qu'elle nous laisse à payer. */}
-                    {workflowIndex(sheetItem.status) >= 2 || sheetItem.returnKind ? (
+                    {workflowIndex(itemStatus(sheetItem)) >= 2 || sheetItem.returnKind ? (
                       sheetItem.returnKind ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3">
                           <div className="min-w-0">
