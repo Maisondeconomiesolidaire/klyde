@@ -46,6 +46,10 @@ import type { Doc, Id } from "../convex/_generated/dataModel";
 import { cn } from "./lib/cn";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { AppSwitcher } from "./components/AppSwitcher";
+import {
+  vintedElapsedDays,
+  type VacationPeriod,
+} from "../convex/lib/klydeVacations";
 import { PortalButton } from "./components/PortalButton";
 import { HelpButton } from "./components/HelpButton";
 import { VintedMailbox } from "./components/VintedMailbox";
@@ -1180,9 +1184,16 @@ function workflowIndex(status: string) {
   return ({ stock: 0, en_ligne: 1, en_cours_envoi: 2, envoye: 3, gagne: 4 }[status] ?? -1);
 }
 
-function vintedDaysOnline(vintedAt?: number) {
+/**
+ * Ancienneté d'une annonce Vinted, vacances déduites.
+ *
+ * Le calcul est celui du backend (`convex/lib/klydeVacations.ts`) : l'écran et
+ * l'alerte des trois semaines doivent dire la même chose, sinon l'alerte
+ * partirait sur un article que la fiche annonce encore jeune.
+ */
+function vintedDaysOnline(vintedAt?: number, periods?: readonly VacationPeriod[]) {
   if (!vintedAt) return null;
-  return Math.max(0, Math.floor((Date.now() - vintedAt) / (24 * 60 * 60 * 1000)));
+  return vintedElapsedDays(vintedAt, periods ?? [], Date.now());
 }
 
 /** Thème clair/sombre persistant (comme les autres apps de l'écosystème). */
@@ -1262,6 +1273,10 @@ function AppContent({
   const advanceWorkflow = useMutation(api.klyde.advanceWorkflow);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const setViewsAtSale = useMutation(api.klyde.setViewsAtSale);
+  const vacation = useQuery(api.klyde.vacationState);
+  const vacationPeriods: VacationPeriod[] = vacation?.periods ?? [];
+  const startVacation = useMutation(api.klyde.startVacation);
+  const endVacation = useMutation(api.klyde.endVacation);
   const setReturn = useMutation(api.klyde.setReturn);
   const clearReturn = useMutation(api.klyde.clearReturn);
   const moveToStockB = useMutation(api.klyde.moveToStockB);
@@ -2605,6 +2620,25 @@ function AppContent({
                 Alléger les photos
               </button>
             ) : null}
+            {canUpdate ? (
+              <button
+                type="button"
+                onClick={() => void (vacation?.active ? endVacation({}) : startVacation({}))}
+                title={
+                  vacation?.active
+                    ? "Reprendre : l'ancienneté des annonces recommence à courir et les alertes repartent."
+                    : "Suspendre l'ancienneté des annonces Vinted et les alertes des 3 semaines."
+                }
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                  vacation?.active
+                    ? "border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                    : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:bg-[var(--muted)]",
+                )}
+              >
+                {vacation?.active ? "Mode vacances actif" : "Mode vacances"}
+              </button>
+            ) : null}
             {canCreate ? (
               <button
                 type="button"
@@ -3564,7 +3598,7 @@ function AppContent({
                 const current = workflowIndex(sheetItem.status);
                 const steps = [
                   { status: "stock", label: "Article en stock", detail: "Fiche article et photos enregistrées." },
-                  { status: "en_ligne", label: "Mis en ligne sur Vinted", detail: sheetItem.vintedAt ? `En ligne depuis ${vintedDaysOnline(sheetItem.vintedAt)} jour${vintedDaysOnline(sheetItem.vintedAt) === 1 ? "" : "s"}.` : "Prix affiché et case Vinted requis." },
+                  { status: "en_ligne", label: "Mis en ligne sur Vinted", detail: sheetItem.vintedAt ? `En ligne depuis ${vintedDaysOnline(sheetItem.vintedAt, vacationPeriods)} jour${vintedDaysOnline(sheetItem.vintedAt, vacationPeriods) === 1 ? "" : "s"}.${vacation?.active ? " Horloge arrêtée (mode vacances)." : ""}` : "Prix affiché et case Vinted requis." },
                   { status: "en_cours_envoi", label: "Vendu", detail: "Renseignez le prix réel et le nombre de vues de l'annonce." },
                   { status: "envoye", label: "Expédié", detail: "Numéro de suivi ou note d'expédition requis." },
                   { status: "gagne", label: "Acheteur a accepté l'article", detail: "Vente définitivement gagnée." },
