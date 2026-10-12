@@ -1147,6 +1147,35 @@ function vintedNeedsDecision(item: ListedItem) {
   return Boolean(item.vinted && item.vintedAt && Date.now() - item.vintedAt >= VINTED_EXTENSION_AFTER_MS);
 }
 
+/** Les trois issues d'une vente annulée, et ce qu'elles coûtent réellement. */
+const RETURN_LABELS: Record<string, string> = {
+  retour_client: "Retour aux frais de l'acheteur",
+  retour_vendeur: "Retour à nos frais",
+  remboursement: "Remboursé, article non restitué",
+};
+
+const RETURN_CHOICES = [
+  {
+    kind: "retour_client" as const,
+    label: "Retour aux frais de l'acheteur",
+    hint: "L'article ne lui convient pas et il paie son retour : ni gain ni perte.",
+  },
+  {
+    kind: "retour_vendeur" as const,
+    label: "Retour à nos frais",
+    hint: "L'erreur vient de nous : le port du retour reste à notre charge.",
+  },
+  {
+    kind: "remboursement" as const,
+    label: "Remboursé, article gardé",
+    hint: "L'acheteur est remboursé et conserve l'article : la somme est perdue.",
+  },
+];
+
+function euroAmount(value?: number) {
+  return (value ?? 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+}
+
 function workflowIndex(status: string) {
   return ({ stock: 0, en_ligne: 1, en_cours_envoi: 2, envoye: 3, gagne: 4 }[status] ?? -1);
 }
@@ -1193,6 +1222,9 @@ function AppContent({
   const [trackingNoteDraft, setTrackingNoteDraft] = useState("");
   const [viewsAtSaleDraft, setViewsAtSaleDraft] = useState("");
   const [shipmentNote, setShipmentNote] = useState("");
+  /** Saisie du retour en cours : montant et motif, avant enregistrement. */
+  const [returnAmount, setReturnAmount] = useState("");
+  const [returnNote, setReturnNote] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [articleSheetOpen, setArticleSheetOpen] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
@@ -1230,6 +1262,8 @@ function AppContent({
   const advanceWorkflow = useMutation(api.klyde.advanceWorkflow);
   const updateTrackingNotes = useMutation(api.klyde.updateTrackingNotes);
   const setViewsAtSale = useMutation(api.klyde.setViewsAtSale);
+  const setReturn = useMutation(api.klyde.setReturn);
+  const clearReturn = useMutation(api.klyde.clearReturn);
   const moveToStockB = useMutation(api.klyde.moveToStockB);
   const moveToShop = useMutation(api.klyde.moveToShop);
   const extendVintedListing = useMutation(api.klyde.extendVintedListing);
@@ -1971,6 +2005,45 @@ function AppContent({
       await moveToShop({ id: editingId });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Remise en magasin impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Enregistre un retour ou un remboursement sur la vente en cours.
+   *
+   * Le montant n'est demandé que lorsqu'il reste quelque chose à notre charge :
+   * un retour payé par l'acheteur ne coûte rien, lui réclamer une somme ferait
+   * saisir un chiffre qui n'existe pas.
+   */
+  async function recordReturn(kind: "retour_client" | "retour_vendeur" | "remboursement") {
+    if (!editingId) return;
+    setError(null);
+    setBusy("workflow");
+    try {
+      const parsed = Number(returnAmount.replace(",", "."));
+      await setReturn({
+        id: editingId,
+        kind,
+        amount: kind === "retour_client" || !returnAmount.trim() || Number.isNaN(parsed) ? undefined : parsed,
+        note: returnNote.trim() || undefined,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Enregistrement du retour impossible.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancelReturn() {
+    if (!editingId) return;
+    setError(null);
+    setBusy("workflow");
+    try {
+      await clearReturn({ id: editingId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Annulation du retour impossible.");
     } finally {
       setBusy(null);
     }
@@ -3571,6 +3644,86 @@ function AppContent({
                           {busy === "workflow" ? "Enregistrement…" : "Remettre en magasin"}
                         </button>
                       </div>
+                    ) : null}
+
+                    {/* Vente annulée : l'article revient, ou l'acheteur est
+                        remboursé. Dans les trois cas la vente sort du chiffre
+                        d'affaires ; seul change ce qu'elle nous laisse à payer. */}
+                    {workflowIndex(sheetItem.status) >= 2 || sheetItem.returnKind ? (
+                      sheetItem.returnKind ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
+                              {RETURN_LABELS[sheetItem.returnKind]}
+                            </p>
+                            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                              {sheetItem.returnKind === "retour_client"
+                                ? "Retour à la charge de l'acheteur : ni gain ni perte."
+                                : `${euroAmount(sheetItem.returnAmount)} à notre charge.`}
+                              {sheetItem.returnNote ? ` · ${sheetItem.returnNote}` : ""}
+                            </p>
+                            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                              Cette vente ne compte plus dans le chiffre d'affaires.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void cancelReturn()}
+                            disabled={!canUpdate || busy === "workflow"}
+                            className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50"
+                          >
+                            Annuler le retour
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 rounded-xl border border-dashed border-[var(--border)] p-3">
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--foreground)]">Retour ou remboursement</p>
+                            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                              La vente sortira du chiffre d'affaires. Indiquez la somme qui reste à votre
+                              charge — inutile si l'acheteur paie lui-même son retour.
+                            </p>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="grid gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                              Somme à votre charge
+                              <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-3 focus-within:border-[var(--primary)]">
+                                <input
+                                  className="h-10 w-full bg-transparent text-base font-semibold text-[var(--foreground)] outline-none"
+                                  inputMode="decimal"
+                                  value={returnAmount}
+                                  onChange={(event) => setReturnAmount(event.target.value)}
+                                  placeholder="Frais de port, ou somme remboursée"
+                                />
+                                <span className="font-semibold text-[var(--muted-foreground)]">€</span>
+                              </div>
+                            </label>
+                            <label className="grid gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                              Motif (facultatif)
+                              <input
+                                className={inputClass()}
+                                value={returnNote}
+                                onChange={(event) => setReturnNote(event.target.value)}
+                                placeholder="Ex. taille non conforme"
+                              />
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {RETURN_CHOICES.map((choice) => (
+                              <button
+                                key={choice.kind}
+                                type="button"
+                                onClick={() => void recordReturn(choice.kind)}
+                                disabled={!canUpdate || busy === "workflow"}
+                                title={choice.hint}
+                                className="rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50 hover:border-rose-500/60"
+                              >
+                                {choice.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
                     ) : null}
                   </section>
                 );

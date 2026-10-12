@@ -1,7 +1,7 @@
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { formatUserName, requireCrmPermission, requireStaff, requireUser } from "./lib";
+import { formatUserName, requireAdmin, requireCrmPermission, requireStaff, requireUser } from "./lib";
 
 /**
  * Agents polyvalents (Recyclerie) — gestion des ouvriers polyvalents.
@@ -11,6 +11,21 @@ import { formatUserName, requireCrmPermission, requireStaff, requireUser } from 
  * partage la même clé de permission `agents-polyvalents`.
  */
 const PAGE_KEY = "agents-polyvalents";
+
+/**
+ * Libellés des types de contrat d'un salarié.
+ *
+ * Doit rester aligné sur `polyvalentWorkers.employmentType` dans le schéma et
+ * sur `WORKER_EMPLOYMENT_LABELS` côté Recycapp (`src/lib/constants.ts`).
+ */
+const WORKER_EMPLOYMENT_LABELS: Record<
+  "permanent" | "encadranttechnique" | "polyvalent",
+  string
+> = {
+  permanent: "Ouvrier permanent",
+  encadranttechnique: "Encadrant technique",
+  polyvalent: "Ouvrier polyvalent",
+};
 
 /* ─── Tâches ──────────────────────────────────────────────────────────────── */
 
@@ -25,14 +40,18 @@ export const listTasks = query({
 const taskSite = v.union(v.literal("60"), v.literal("76"));
 
 /** Nom, site de traitement et main d'œuvre requise : la fiche d'une tâche. */
-function taskProfile(args: { name: string; site?: "60" | "76"; requiredMonthlyHours?: number }) {
+function taskProfile(args: { name: string; site?: "60" | "76"; requiredMonthlyHours?: number; requiredWorkers?: number }) {
   const name = args.name.trim();
   if (!name) throw new Error("Le nom de la tâche est requis.");
   const hours = args.requiredMonthlyHours;
   if (hours !== undefined && (!Number.isFinite(hours) || hours <= 0)) {
     throw new Error("Les heures requises doivent être un nombre positif.");
   }
-  return { name, site: args.site, requiredMonthlyHours: hours };
+  const requiredWorkers = args.requiredWorkers;
+  if (requiredWorkers !== undefined && (!Number.isInteger(requiredWorkers) || requiredWorkers < 1)) {
+    throw new Error("Le nombre de salariés requis doit être un entier positif.");
+  }
+  return { name, site: args.site, requiredMonthlyHours: hours, requiredWorkers };
 }
 
 export const createTask = mutation({
@@ -40,6 +59,7 @@ export const createTask = mutation({
     name: v.string(),
     site: v.optional(taskSite),
     requiredMonthlyHours: v.optional(v.number()),
+    requiredWorkers: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, PAGE_KEY, "create");
@@ -52,12 +72,28 @@ export const createTask = mutation({
   },
 });
 
+/** Tâches de base du planning hebdomadaire Recyclerie. Idempotent. */
+export const ensurePlannerTasks = mutation({
+  args: { site: taskSite },
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, PAGE_KEY, "create");
+    const identity = await requireUser(ctx);
+    const existing = await ctx.db.query("polyvalentTasks").take(500);
+    const defaults = ["Apports", "Caisse magasin"];
+    for (const name of defaults) {
+      if (existing.some((task) => task.site === args.site && task.name.trim().toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr"))) continue;
+      await ctx.db.insert("polyvalentTasks", { name, site: args.site, createdBy: formatUserName(identity), createdAt: Date.now() });
+    }
+  },
+});
+
 export const updateTask = mutation({
   args: {
     id: v.id("polyvalentTasks"),
     name: v.string(),
     site: v.optional(taskSite),
     requiredMonthlyHours: v.optional(v.number()),
+    requiredWorkers: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, PAGE_KEY, "update");
@@ -222,19 +258,18 @@ export const listPersonas = query({
       .map((worker) => ({
         _id: worker._id,
         name: `${worker.firstName} ${worker.lastName}`.trim(),
-        role:
-          worker.employmentType === "permanent"
-            ? "Ouvrier permanent"
-            : worker.employmentType === "polyvalent"
-              ? "Ouvrier polyvalent"
-              : null,
+        role: worker.employmentType ? WORKER_EMPLOYMENT_LABELS[worker.employmentType] : null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "fr"));
   },
 });
 
 const workerSites = v.array(v.union(v.literal("60"), v.literal("76")));
-const workerEmploymentType = v.union(v.literal("permanent"), v.literal("polyvalent"));
+const workerEmploymentType = v.union(
+  v.literal("permanent"),
+  v.literal("encadranttechnique"),
+  v.literal("polyvalent"),
+);
 
 /** Champs de fiche partagés par la création et la modification d'un salarié. */
 function workerProfile(args: {
@@ -242,12 +277,15 @@ function workerProfile(args: {
   lastName: string;
   email?: string;
   sites?: ("60" | "76")[];
-  employmentType?: "permanent" | "polyvalent";
+  employmentType?: "permanent" | "encadranttechnique" | "polyvalent";
+  hasDrivingLicenseB?: boolean;
+  notes?: string;
 }) {
   const firstName = args.firstName.trim();
   const lastName = args.lastName.trim();
   if (!firstName && !lastName) throw new Error("Le nom du salarié est requis.");
   const email = args.email?.trim();
+  const notes = args.notes?.trim();
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("L'adresse email est invalide.");
   return {
     firstName,
@@ -255,6 +293,8 @@ function workerProfile(args: {
     email: email || undefined,
     sites: args.sites?.length ? args.sites : undefined,
     employmentType: args.employmentType,
+    hasDrivingLicenseB: args.hasDrivingLicenseB || undefined,
+    notes: notes || undefined,
   };
 }
 
@@ -265,6 +305,8 @@ export const createWorker = mutation({
     email: v.optional(v.string()),
     sites: v.optional(workerSites),
     employmentType: v.optional(workerEmploymentType),
+    hasDrivingLicenseB: v.optional(v.boolean()),
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, PAGE_KEY, "create");
@@ -286,6 +328,8 @@ export const updateWorker = mutation({
     email: v.optional(v.string()),
     sites: v.optional(workerSites),
     employmentType: v.optional(workerEmploymentType),
+    hasDrivingLicenseB: v.optional(v.boolean()),
+    notes: v.optional(v.string()),
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -338,12 +382,14 @@ export const setWorkerSchedule = mutation({
   args: { workerId: v.id("polyvalentWorkers"), availability: availabilityValidator },
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, PAGE_KEY, "update");
-    if (args.availability.length > 7) throw new Error("Un planning contient au maximum 7 jours.");
-    const days = new Set<number>();
+    if (args.availability.length > 14) throw new Error("Un planning contient au maximum deux créneaux par jour.");
+    const slotsByDay = new Map<number, number>();
     for (const slot of args.availability) {
-      if (!Number.isInteger(slot.weekday) || slot.weekday < 1 || slot.weekday > 7 || days.has(slot.weekday)) throw new Error("Les jours de disponibilité sont invalides.");
+      if (!Number.isInteger(slot.weekday) || slot.weekday < 1 || slot.weekday > 6) throw new Error("Les disponibilités vont du lundi au samedi.");
       if (!/^\d{2}:\d{2}$/.test(slot.start) || !/^\d{2}:\d{2}$/.test(slot.end) || slot.end <= slot.start) throw new Error("Les horaires de disponibilité sont invalides.");
-      days.add(slot.weekday);
+      const count = (slotsByDay.get(slot.weekday) ?? 0) + 1;
+      if (count > 2) throw new Error("Un jour ne peut avoir qu’un créneau matin et un créneau après-midi.");
+      slotsByDay.set(slot.weekday, count);
     }
     if (!await ctx.db.get(args.workerId)) throw new Error("Ouvrier introuvable.");
     const schedule = await ctx.db.query("polyvalentWorkerSchedules").withIndex("by_worker", (q) => q.eq("workerId", args.workerId)).unique();
@@ -383,11 +429,12 @@ export const createRecurrence = mutation({
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, PAGE_KEY, "create");
     const identity = await requireUser(ctx);
-    if (args.slots.length === 0 || args.slots.length > 7) throw new Error("Choisissez entre un et sept créneaux hebdomadaires.");
-    const days = new Set<number>();
+    if (args.slots.length === 0 || args.slots.length > 14) throw new Error("Choisissez entre un et quatorze créneaux hebdomadaires.");
+    const slots = new Set<string>();
     for (const slot of args.slots) {
-      if (!Number.isInteger(slot.weekday) || slot.weekday < 1 || slot.weekday > 7 || days.has(slot.weekday) || !/^\d{2}:\d{2}$/.test(slot.start) || !/^\d{2}:\d{2}$/.test(slot.end) || slot.end <= slot.start) throw new Error("Les créneaux récurrents sont invalides.");
-      days.add(slot.weekday);
+      const key = `${slot.weekday}-${slot.start}-${slot.end}`;
+      if (!Number.isInteger(slot.weekday) || slot.weekday < 1 || slot.weekday > 6 || slots.has(key) || !/^\d{2}:\d{2}$/.test(slot.start) || !/^\d{2}:\d{2}$/.test(slot.end) || slot.end <= slot.start) throw new Error("Les créneaux récurrents sont invalides.");
+      slots.add(key);
     }
     const [task, worker] = await Promise.all([ctx.db.get(args.taskId), args.workerId ? ctx.db.get(args.workerId) : null]);
     if (!task) throw new Error("Tâche introuvable.");
@@ -400,11 +447,200 @@ export const createRecurrence = mutation({
   },
 });
 
+const importSlot = v.object({ weekday: v.number(), start: v.string(), end: v.string() });
+const importedPlanningWorker = v.object({
+  firstName: v.string(),
+  lastName: v.string(),
+  availability: v.array(importSlot),
+  assignments: v.array(v.object({ task: v.string(), slots: v.array(importSlot) })),
+});
+
+/** Import idempotent du planning LCP, réservé aux administrateurs. */
+export const importPlanningLcp = mutation({
+  args: { workers: v.array(importedPlanningWorker), tasks: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const identity = await requireAdmin(ctx);
+    if (args.workers.length === 0 || args.workers.length > 100 || args.tasks.length > 50) {
+      throw new Error("Le fichier de planning est invalide.");
+    }
+    const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const validateSlots = (slots: Array<{ weekday: number; start: string; end: string }>) => {
+      if (slots.length === 0 || slots.length > 14) throw new Error("Un salarié doit avoir entre un et quatorze créneaux.");
+      const seen = new Set<string>();
+      for (const slot of slots) {
+        const key = `${slot.weekday}-${slot.start}-${slot.end}`;
+        if (!Number.isInteger(slot.weekday) || slot.weekday < 1 || slot.weekday > 6 || !/^\d{2}:\d{2}$/.test(slot.start) || !/^\d{2}:\d{2}$/.test(slot.end) || slot.end <= slot.start || seen.has(key)) throw new Error("Un créneau importé est invalide.");
+        seen.add(key);
+      }
+    };
+    const [workers, tasks, schedules, recurrences] = await Promise.all([
+      ctx.db.query("polyvalentWorkers").take(1000),
+      ctx.db.query("polyvalentTasks").take(1000),
+      ctx.db.query("polyvalentWorkerSchedules").take(1000),
+      ctx.db.query("polyvalentTaskRecurrences").take(1000),
+    ]);
+    const taskByName = new Map(tasks.map((task) => [normalize(task.name), task]));
+    for (const rawName of args.tasks) {
+      const name = rawName.trim();
+      if (!name) continue;
+      const key = normalize(name);
+      if (taskByName.has(key)) continue;
+      const id = await ctx.db.insert("polyvalentTasks", { name, site: "60", createdBy: formatUserName(identity), createdAt: Date.now() });
+      taskByName.set(key, (await ctx.db.get(id))!);
+    }
+    // Les deux créneaux non affectés livrés avec le prototype ne font pas partie du CSV.
+    for (const recurrence of recurrences) {
+      const task = taskByName.get(String(recurrence.taskId)) ?? tasks.find((item) => item._id === recurrence.taskId);
+      if (!recurrence.workerId && ["apports", "caissemagasin"].includes(normalize(task?.name ?? ""))) await ctx.db.delete(recurrence._id);
+    }
+    const workerByName = new Map<string, Doc<"polyvalentWorkers">>();
+    for (const worker of workers) workerByName.set(normalize(`${worker.firstName} ${worker.lastName}`), worker);
+    const scheduleByWorker = new Map(schedules.map((schedule) => [String(schedule.workerId), schedule]));
+    const recurrenceByWorkerTask = new Map(recurrences.filter((item) => item.workerId).map((item) => [`${item.workerId}-${item.taskId}`, item]));
+    let createdWorkers = 0;
+    let createdTasks = 0;
+    let updatedRecurrences = 0;
+    for (const imported of args.workers) {
+      validateSlots(imported.availability);
+      const key = normalize(`${imported.firstName} ${imported.lastName}`);
+      let worker = workerByName.get(key);
+      if (!worker) {
+        const id = await ctx.db.insert("polyvalentWorkers", { firstName: imported.firstName.trim(), lastName: imported.lastName.trim(), sites: ["60"], employmentType: "polyvalent", active: true, createdBy: formatUserName(identity), createdAt: Date.now() });
+        worker = (await ctx.db.get(id))!;
+        workerByName.set(key, worker);
+        createdWorkers++;
+      } else {
+        await ctx.db.patch(worker._id, { active: true, sites: Array.from(new Set<"60" | "76">([...(worker.sites ?? []), "60"])) });
+      }
+      const schedule = scheduleByWorker.get(String(worker._id));
+      if (schedule) await ctx.db.patch(schedule._id, { availability: imported.availability });
+      else await ctx.db.insert("polyvalentWorkerSchedules", { workerId: worker._id, availability: imported.availability });
+      for (const assignment of imported.assignments) {
+        validateSlots(assignment.slots);
+        const task = taskByName.get(normalize(assignment.task));
+        if (!task) throw new Error(`Tâche introuvable : ${assignment.task}`);
+        const recurrence = recurrenceByWorkerTask.get(`${worker._id}-${task._id}`);
+        if (recurrence) await ctx.db.patch(recurrence._id, { slots: assignment.slots });
+        else await ctx.db.insert("polyvalentTaskRecurrences", { taskId: task._id, workerId: worker._id, slots: assignment.slots, createdBy: formatUserName(identity), createdAt: Date.now() });
+        updatedRecurrences++;
+      }
+    }
+    createdTasks = args.tasks.filter((name) => !tasks.some((task) => normalize(task.name) === normalize(name))).length;
+    return { createdWorkers, createdTasks, updatedRecurrences, importedWorkers: args.workers.length };
+  },
+});
+
 export const deleteRecurrence = mutation({
   args: { id: v.id("polyvalentTaskRecurrences") },
   handler: async (ctx, args) => {
     await requireCrmPermission(ctx, PAGE_KEY, "delete");
     await ctx.db.delete(args.id);
+  },
+});
+
+/** Supprime un créneau affiché dans le planning. Les occurrences récurrentes
+ * restent définies pour les autres semaines : seule celle sélectionnée est
+ * exclue grâce à une exception. */
+export const deletePlannerOccurrence = mutation({
+  args: {
+    activityIds: v.array(v.id("polyvalentActivities")),
+    recurrenceIds: v.array(v.id("polyvalentTaskRecurrences")),
+    originalStartAt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, PAGE_KEY, "delete");
+    if (!Number.isFinite(args.originalStartAt) || args.activityIds.length + args.recurrenceIds.length === 0 || args.activityIds.length + args.recurrenceIds.length > 100) {
+      throw new Error("Tâche à supprimer invalide.");
+    }
+
+    for (const id of new Set(args.activityIds)) {
+      const activity = await ctx.db.get(id);
+      if (activity) await ctx.db.delete(id);
+    }
+
+    for (const id of new Set(args.recurrenceIds)) {
+      const recurrence = await ctx.db.get(id);
+      if (!recurrence) continue;
+      const existing = await ctx.db
+        .query("polyvalentRecurrenceExceptions")
+        .withIndex("by_recurrenceId_and_originalStartAt", (q) =>
+          q.eq("recurrenceId", id).eq("originalStartAt", args.originalStartAt),
+        )
+        .unique();
+      if (!existing) {
+        await ctx.db.insert("polyvalentRecurrenceExceptions", {
+          recurrenceId: id,
+          originalStartAt: args.originalStartAt,
+        });
+      }
+    }
+    return null;
+  },
+});
+
+export const listRecurrenceExceptions = query({
+  args: { startAt: v.number(), endAt: v.number() },
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, PAGE_KEY, "read");
+    return await ctx.db.query("polyvalentRecurrenceExceptions")
+      .withIndex("by_originalStartAt", (q) => q.gte("originalStartAt", args.startAt).lt("originalStartAt", args.endAt))
+      .take(5000);
+  },
+});
+
+/** Déplace le groupe sélectionné. Une occurrence récurrente devient une
+ * activité datée, sans modifier aucun des créneaux du modèle hebdomadaire. */
+export const updatePlannerTiming = mutation({
+  args: {
+    activityIds: v.array(v.id("polyvalentActivities")),
+    recurrenceIds: v.array(v.id("polyvalentTaskRecurrences")),
+    originalStartAt: v.number(), startAt: v.number(), endAt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, PAGE_KEY, "update");
+    if (![args.startAt, args.endAt, args.originalStartAt].every(Number.isFinite) || args.endAt <= args.startAt || args.activityIds.length + args.recurrenceIds.length > 100) {
+      throw new Error("Créneau invalide.");
+    }
+    const parts = (at: number) => {
+      const values = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(at));
+      const get = (key: string) => values.find((part) => part.type === key)?.value ?? "";
+      return { weekday: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(get("weekday")) + 1, time: `${get("hour")}:${get("minute")}`, date: `${get("year")}-${get("month")}-${get("day")}` };
+    };
+    const from = parts(args.originalStartAt), start = parts(args.startAt), end = parts(args.endAt);
+    if (start.date !== end.date || start.weekday === 7) throw new Error("Choisissez un créneau sur une même journée, du lundi au samedi.");
+    for (const id of new Set(args.activityIds)) {
+      const activity = await ctx.db.get(id);
+      if (!activity) throw new Error("Affectation introuvable.");
+      if (activity.startAt !== args.originalStartAt) throw new Error("Ce créneau a été modifié. Réessayez.");
+      await ctx.db.patch(id, { startAt: args.startAt, endAt: args.endAt });
+    }
+    for (const id of new Set(args.recurrenceIds)) {
+      const recurrence = await ctx.db.get(id);
+      if (!recurrence) throw new Error("Récurrence introuvable.");
+      const selected = recurrence.slots.find((slot) => slot.weekday === from.weekday && slot.start === from.time);
+      if (!selected) throw new Error("Ce créneau récurrent a été modifié. Réessayez.");
+      const existing = await ctx.db.query("polyvalentRecurrenceExceptions")
+        .withIndex("by_recurrenceId_and_originalStartAt", (q) => q.eq("recurrenceId", id).eq("originalStartAt", args.originalStartAt))
+        .unique();
+      if (existing) throw new Error("Cette occurrence a déjà été déplacée. Réessayez depuis son nouveau créneau.");
+      const activityId = await ctx.db.insert("polyvalentActivities", {
+        taskId: recurrence.taskId,
+        workerId: recurrence.workerId,
+        startAt: args.startAt,
+        endAt: args.endAt,
+        site: recurrence.site,
+        createdBy: recurrence.createdBy,
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("polyvalentRecurrenceExceptions", {
+        recurrenceId: id,
+        originalStartAt: args.originalStartAt,
+        activityId,
+      });
+    }
+    return null;
   },
 });
 
@@ -731,3 +967,89 @@ export const setWorkerEmploymentType = mutation({
   },
 });
 
+/* ─── Évènements à staffer ─────────────────────────────────────────────────
+ *
+ * Un évènement se crée dans deux applications — le calendrier de la Recyclerie
+ * (`recycappCalendarEvents`) et l'espace partagé de Mes Outils (`events`) — mais
+ * il mobilise la même équipe. Le planning des ressources les lit donc tous les
+ * deux, et signale ceux auxquels personne n'est encore affecté : c'est là que
+ * le travail de staffing se fait, pas dans le calendrier d'origine.
+ */
+
+/** Évènement du planning, quelle que soit l'application qui l'a créé. */
+const plannerEventSource = v.union(v.literal("recyclerie"), v.literal("mesoutils"));
+
+export const listPlannerEvents = query({
+  args: { from: v.number(), to: v.number() },
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, PAGE_KEY, "read");
+    const workers = await ctx.db.query("polyvalentWorkers").take(1000);
+    const nameById = new Map(
+      workers.map((worker) => [String(worker._id), `${worker.firstName} ${worker.lastName}`.trim()]),
+    );
+    const names = (ids: Id<"polyvalentWorkers">[] | undefined) =>
+      (ids ?? []).map((id) => nameById.get(String(id)) ?? "Salarié supprimé");
+
+    const recyclerie = await ctx.db
+      .query("recycappCalendarEvents")
+      .withIndex("by_startAt", (q) => q.gte("startAt", args.from).lte("startAt", args.to))
+      .collect();
+    // Les évènements sans date n'ont pas de place au planning : l'index les
+    // range avant toute valeur numérique, la borne basse les écarte donc.
+    const mesoutils = await ctx.db
+      .query("events")
+      .withIndex("by_start", (q) => q.gte("start", args.from).lte("start", args.to))
+      .collect();
+
+    return [
+      ...recyclerie.map((event) => ({
+        source: "recyclerie" as const,
+        id: String(event._id),
+        title: event.title,
+        startAt: event.startAt,
+        endAt: event.endAt,
+        location: event.location,
+        workerIds: event.workerIds ?? [],
+        workerNames: names(event.workerIds),
+      })),
+      ...mesoutils.map((event) => ({
+        source: "mesoutils" as const,
+        id: String(event._id),
+        title: event.title,
+        startAt: event.start!,
+        endAt: event.end ?? event.start!,
+        location: event.location,
+        workerIds: event.workerIds ?? [],
+        workerNames: names(event.workerIds),
+      })),
+    ].sort((a, b) => a.startAt - b.startAt);
+  },
+});
+
+/**
+ * Affecte des salariés à un évènement, d'où qu'il vienne.
+ *
+ * La permission est celle du planning (`agents-polyvalents`) et non celle du
+ * calendrier d'origine : mobiliser l'équipe est le métier de cette page, et
+ * demander en plus les droits de Mes Outils y rendrait l'action inutilisable.
+ */
+export const setEventWorkers = mutation({
+  args: {
+    source: plannerEventSource,
+    eventId: v.string(),
+    workerIds: v.array(v.id("polyvalentWorkers")),
+  },
+  handler: async (ctx, args) => {
+    await requireCrmPermission(ctx, PAGE_KEY, "update");
+    const workerIds = args.workerIds.length ? args.workerIds : undefined;
+    if (args.source === "recyclerie") {
+      const id = ctx.db.normalizeId("recycappCalendarEvents", args.eventId);
+      if (!id) throw new Error("Évènement introuvable.");
+      await ctx.db.patch(id, { workerIds });
+      return;
+    }
+    const id = ctx.db.normalizeId("events", args.eventId);
+    if (!id) throw new Error("Évènement introuvable.");
+    await ctx.db.patch(id, { workerIds });
+  },
+});

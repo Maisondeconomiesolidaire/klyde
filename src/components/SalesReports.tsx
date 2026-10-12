@@ -196,6 +196,13 @@ export function SalesReports({
               <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                 {structureName(outlet)} · {report.label}
               </p>
+              {/* Les ventes annulées sont déjà hors du chiffre d'affaires :
+                  ce qui s'en déduit ici, c'est ce qu'elles ont coûté. */}
+              {report.returnsCount > 0 ? (
+                <p className="mt-1 text-xs font-semibold text-rose-600">
+                  − {euro(report.returnsCost)} de retours · net {euro(report.netRevenue)}
+                </p>
+              ) : null}
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-4">
               <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -206,6 +213,12 @@ export function SalesReports({
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                   + {report.pendingCount} expédiée{report.pendingCount > 1 ? "s" : ""} non encaissée
                   {report.pendingCount > 1 ? "s" : ""} ({euro(report.pendingRevenue)})
+                </p>
+              ) : null}
+              {report.returnsCount > 0 ? (
+                <p className="mt-1 text-xs text-rose-600">
+                  − {report.returnsCount} retour{report.returnsCount > 1 ? "s" : ""} ou remboursement
+                  {report.returnsCount > 1 ? "s" : ""}
                 </p>
               ) : null}
             </div>

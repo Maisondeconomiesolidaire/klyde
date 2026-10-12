@@ -38,6 +38,7 @@ export const depotDetails = v.object({
 /** App « Feedback » — application visée par un retour utilisateur. */
 export const feedbackApp = v.union(
   v.literal("mesoutils"),
+  v.literal("mestodo"),
   v.literal("recycapp"),
   v.literal("klyde"),
   v.literal("cycleenbray"),
@@ -888,6 +889,8 @@ export default defineSchema(
     senderName: v.string(),
     senderClerkId: v.optional(v.string()),
     body: v.string(),
+    /** Photos jointes au message ; le texte peut alors être vide. */
+    images: v.optional(v.array(v.id("_storage"))),
     createdAt: v.number(),
     // Accusés de lecture ("Lu à HH:MM").
     readByClientAt: v.optional(v.number()),
@@ -1711,6 +1714,11 @@ export default defineSchema(
     requestKey: v.string(),
     message: v.string(),
     images: v.array(v.id("_storage")),
+    /**
+     * Vidéo du post. Les réseaux n'acceptent pas photos et vidéo dans la même
+     * publication : une composition porte soit l'un, soit l'autre.
+     */
+    videos: v.optional(v.array(v.id("_storage"))),
     authorClerkId: v.string(),
     authorName: v.string(),
     scheduledFor: v.optional(v.number()),
@@ -1750,6 +1758,8 @@ export default defineSchema(
     /** Date de publication programmée, absente pour une publication immédiate. */
     scheduledFor: v.optional(v.number()),
     withPhoto: v.boolean(),
+    /** Publication vidéo (Facebook /videos, Instagram Reels). */
+    withVideo: v.optional(v.boolean()),
     authorClerkId: v.string(),
     authorName: v.string(),
     createdAt: v.number(),
@@ -2071,6 +2081,25 @@ export default defineSchema(
     // Nombre de fois où l'annonce Vinted a été prolongée après l'alerte de 3 semaines.
     vintedExtensionCount: v.optional(v.number()),
     vintedLastExtendedAt: v.optional(v.number()),
+    /**
+     * Vente annulée : l'article revient, ou l'acheteur est remboursé.
+     *
+     * - `retour_client` : retour aux frais de l'acheteur — ni gain ni perte ;
+     * - `retour_vendeur` : retour à nos frais (erreur de notre côté) — le port
+     *   reste à notre charge ;
+     * - `remboursement` : somme rendue intégralement, l'acheteur garde l'article.
+     *
+     * Dans tous les cas la vente sort du chiffre d'affaires ; `returnAmount`
+     * porte ce qui reste réellement à notre charge (nul pour `retour_client`).
+     */
+    returnKind: v.optional(v.union(
+      v.literal("retour_client"),
+      v.literal("retour_vendeur"),
+      v.literal("remboursement"),
+    )),
+    returnAmount: v.optional(v.number()),
+    returnedAt: v.optional(v.number()),
+    returnNote: v.optional(v.string()),
     /** Date historique d'encaissement, conservée pour les anciens articles. */
     soldAt: v.optional(v.number()),
     /**
@@ -2321,7 +2350,8 @@ export default defineSchema(
     createdAt: v.number(),
   })
     .index("by_name", ["name"])
-    .index("by_owner", ["ownerUserId"]),
+    .index("by_owner", ["ownerUserId"])
+    .index("by_createdAt", ["createdAt"]),
 
   /** Documents rattachés à une entreprise (KBIS, RIB… ; client ↔ staff). */
   bpCompanyDocuments: defineTable({
@@ -2364,6 +2394,13 @@ export default defineSchema(
   /** Évènements internes affichés dans le calendrier CRM Recycapp. */
   recycappCalendarEvents: defineTable({
     title: v.string(),
+    /**
+     * Auteur de l'évènement (`identity.subject` Clerk). Optionnel : les
+     * évènements créés avant l'ajout du champ, et ceux importés d'un planning,
+     * n'ont pas d'auteur — leur suppression reste réservée à `calendrier:delete`.
+     */
+    authorClerkId: v.optional(v.string()),
+    authorName: v.optional(v.string()),
     animationType: v.optional(v.string()),
     structure: v.optional(v.string()),
     activity: v.optional(v.string()),
@@ -2430,6 +2467,8 @@ export default defineSchema(
     key: v.string(),
     /** Prix du DIB en centimes d'euro par kg (défaut : 34). */
     dibPriceCentsPerKg: v.optional(v.number()),
+    /** Prix du bois en centimes d'euro par kg (défaut : 17). */
+    woodPriceCentsPerKg: v.optional(v.number()),
     /** Code PIN de l'onglet « Profils » (défaut : 0205). */
     profilesPin: v.optional(v.string()),
     updatedAt: v.optional(v.number()),
@@ -2500,7 +2539,8 @@ export default defineSchema(
   })
     .index("by_company", ["companyId"])
     .index("by_number", ["depotNumber"])
-    .index("by_profile", ["createdByProfileId"]),
+    .index("by_profile", ["createdByProfileId"])
+    .index("by_createdAt", ["createdAt"]),
 
   // ───────────────────────── App « Pointeuse LSDB » ─────────────────────────
   // Suivi des salariés et des chantiers : clients, projets, pointages,
@@ -2729,6 +2769,14 @@ export default defineSchema(
     socialSecurityNumber: v.string(),
     socialSecurityNumberNormalized: v.string(),
     firstContractDate: v.optional(v.string()),
+    /** Distance domicile → lieu de travail, calculée via le service de tournée partagé. */
+    commuteDistanceKm: v.optional(v.number()),
+    commuteDurationMinutes: v.optional(v.number()),
+    commuteCalculatedAt: v.optional(v.number()),
+    commuteWorkplaceAddress: v.optional(v.string()),
+    /** Coordonnées géocodées, destinées uniquement à la carte interne RH. */
+    commuteLongitude: v.optional(v.number()),
+    commuteLatitude: v.optional(v.number()),
     active: v.boolean(),
     importedFrom: v.optional(v.string()),
     createdAt: v.number(),
@@ -2826,6 +2874,8 @@ export default defineSchema(
     site: v.optional(v.union(v.literal("60"), v.literal("76"))),
     /** Main d'œuvre requise par mois, en heures (base du plan de charge). */
     requiredMonthlyHours: v.optional(v.number()),
+    /** Nombre de salariés nécessaires simultanément sur la tâche. */
+    requiredWorkers: v.optional(v.number()),
     createdBy: v.string(),
     createdAt: v.number(),
   }).index("by_name", ["name"]),
@@ -2837,7 +2887,11 @@ export default defineSchema(
     /** Recycleries de rattachement : un salarié peut intervenir sur les deux. */
     sites: v.optional(v.array(v.union(v.literal("60"), v.literal("76")))),
     /** Type de contrat : agent permanent ou agent polyvalent. */
-    employmentType: v.optional(v.union(v.literal("permanent"), v.literal("polyvalent"))),
+    employmentType: v.optional(v.union(v.literal("permanent"), v.literal("encadranttechnique"), v.literal("polyvalent"))),
+    /** Le salarié est titulaire du permis de conduire B. */
+    hasDrivingLicenseB: v.optional(v.boolean()),
+    /** Informations libres liées à la fiche salarié. */
+    notes: v.optional(v.string()),
     /** Inactif = conservé pour l'historique mais plus attribuable. */
     active: v.optional(v.boolean()),
     /** Salarié RH correspondant : la fiche RH fait foi pour l'identité. */
@@ -2880,6 +2934,17 @@ export default defineSchema(
   })
     .index("by_task", ["taskId"])
     .index("by_worker", ["workerId"]),
+
+  /** Occurrences détachées du modèle hebdomadaire après un déplacement. */
+  polyvalentRecurrenceExceptions: defineTable({
+    recurrenceId: v.id("polyvalentTaskRecurrences"),
+    originalStartAt: v.number(),
+    /** Une occurrence peut être déplacée vers une activité datée, ou simplement
+     * supprimée. Dans ce dernier cas, aucun remplacement n'est créé. */
+    activityId: v.optional(v.id("polyvalentActivities")),
+  })
+    .index("by_originalStartAt", ["originalStartAt"])
+    .index("by_recurrenceId_and_originalStartAt", ["recurrenceId", "originalStartAt"]),
 
   polyvalentActivities: defineTable({
     taskId: v.id("polyvalentTasks"),
@@ -3279,6 +3344,87 @@ export default defineSchema(
     .index("by_clerkId", ["clerkId"])
     .index("by_reference", ["reference"])
     .index("by_createdAt", ["createdAt"]),
+
+  /** Projets et chantiers suivis dans Mes Todo. */
+  todoProjects: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("archived"),
+    ),
+    color: v.optional(v.string()),
+    dueAt: v.optional(v.number()),
+    taskCount: v.number(),
+    completedTaskCount: v.number(),
+    createdByClerkId: v.string(),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status_and_updatedAt", ["status", "updatedAt"])
+    .index("by_updatedAt", ["updatedAt"]),
+
+  /** Tâches d'un projet Mes Todo. */
+  todoTasks: defineTable({
+    projectId: v.id("todoProjects"),
+    /** Une seule profondeur de sous-tâches, à la manière d'une tâche Asana. */
+    parentTaskId: v.optional(v.id("todoTasks")),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("todo"),
+      v.literal("in_progress"),
+      v.literal("done"),
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent"),
+    ),
+    assignees: v.array(
+      v.object({
+        clerkId: v.string(),
+        name: v.string(),
+        imageUrl: v.optional(v.string()),
+        /** RACI : les anciennes affectations sans rôle restent des réalisateurs. */
+        role: v.optional(
+          v.union(
+            v.literal("responsible"),
+            v.literal("accountable"),
+            v.literal("consulted"),
+            v.literal("informed"),
+          ),
+        ),
+      }),
+    ),
+    dueAt: v.optional(v.number()),
+    position: v.number(),
+    completedAt: v.optional(v.number()),
+    createdByClerkId: v.string(),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_parentTaskId", ["parentTaskId"])
+    .index("by_projectId_and_status", ["projectId", "status"])
+    .index("by_dueAt", ["dueAt"]),
+
+  /** Notes de suivi, rattachées au projet ou à une tâche précise. */
+  todoNotes: defineTable({
+    projectId: v.id("todoProjects"),
+    taskId: v.optional(v.id("todoTasks")),
+    body: v.string(),
+    authorClerkId: v.string(),
+    authorName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_taskId", ["taskId"]),
   },
   { schemaValidation: false },
 );
