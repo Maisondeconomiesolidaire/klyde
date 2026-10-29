@@ -10,10 +10,14 @@ import type { Id } from "../../convex/_generated/dataModel";
  * causes, corrigées ici — les photos HEIC de l'iPhone, que `createImageBitmap`
  * ne sait pas lire, et le format de sortie annoncé sans vérifier ce que le
  * navigateur a réellement produit (sans encodeur WebP, `toBlob` rend un PNG).
+ *
+ * Safari (iPhone) n'encode pas le WebP : presque tout le stock passe par le
+ * repli JPEG. À 1800 px et 0,85, il pesait encore ~1,4 Mo la photo — l'essentiel
+ * du stockage et de la bande passante Convex partagés.
  */
-const MAX_DIMENSION = 1800;
-const WEBP_QUALITY = 0.84;
-const JPEG_QUALITY = 0.85;
+const MAX_DIMENSION = 1600;
+const WEBP_QUALITY = 0.82;
+const JPEG_QUALITY = 0.78;
 
 /** Extension cohérente avec le type réellement produit par le navigateur. */
 const EXTENSIONS: Record<string, string> = {
