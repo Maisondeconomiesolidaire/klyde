@@ -18,6 +18,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 const MAX_DIMENSION = 1600;
 const WEBP_QUALITY = 0.82;
 const JPEG_QUALITY = 0.78;
+const THUMB_DIMENSION = 640;
 
 /** Extension cohérente avec le type réellement produit par le navigateur. */
 const EXTENSIONS: Record<string, string> = {
@@ -44,7 +45,12 @@ async function convertHeicToJpeg(file: File): Promise<File> {
   });
 }
 
-async function compressImage(file: File): Promise<File> {
+async function compressImage(
+  file: File,
+  maxDimension = MAX_DIMENSION,
+  webpQuality = WEBP_QUALITY,
+  jpegQuality = JPEG_QUALITY,
+): Promise<File> {
   const heic = isHeicImage(file);
   if (!heic && (!file.type.startsWith("image/") || file.type === "image/gif")) return file;
   if (typeof createImageBitmap !== "function" || typeof document === "undefined") {
@@ -62,7 +68,7 @@ async function compressImage(file: File): Promise<File> {
 
   try {
     const bitmap = await createImageBitmap(source);
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
@@ -74,12 +80,12 @@ async function compressImage(file: File): Promise<File> {
     const encode = (type: string, quality: number) =>
       new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
 
-    let blob = await encode("image/webp", WEBP_QUALITY);
+    let blob = await encode("image/webp", webpQuality);
     // Repli JPEG : sans encodeur WebP, `toBlob` rend un PNG non compressé,
     // souvent plus lourd que la photo d'origine — donc rejeté plus bas, et le
     // fichier de 4 Mo partait tel quel.
     if (blob && blob.type !== "image/webp") {
-      blob = (await encode("image/jpeg", JPEG_QUALITY)) ?? blob;
+      blob = (await encode("image/jpeg", jpegQuality)) ?? blob;
     }
     if (!blob || blob.size >= source.size) return source;
     const extension = EXTENSIONS[blob.type] ?? ".img";
@@ -98,17 +104,31 @@ export async function optimizeImageFile(file: File) {
 
 export function useUpload() {
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const registerThumbnail = useMutation(api.thumbnails.register);
 
-  return async function upload(file: File): Promise<Id<"_storage">> {
-    const optimized = await compressImage(file);
+  async function send(file: File) {
     const url = await generateUploadUrl();
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": optimized.type },
-      body: optimized,
+      headers: { "Content-Type": file.type },
+      body: file,
     });
     if (!response.ok) throw new Error("Echec de l'envoi de la photo.");
     const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
+    return storageId;
+  }
+
+  return async function upload(file: File): Promise<Id<"_storage">> {
+    const optimized = await compressImage(file);
+    const storageId = await send(optimized);
+    // Miniature des grilles (voir convex/thumbnails.ts). Facultative : en cas
+    // d'échec, les cartes affichent simplement la photo.
+    try {
+      const thumb = await compressImage(optimized, THUMB_DIMENSION, 0.72, 0.7);
+      if (thumb !== optimized) await registerThumbnail({ source: storageId, thumb: await send(thumb) });
+    } catch {
+      // Sans miniature.
+    }
     return storageId;
   };
 }

@@ -111,7 +111,7 @@ const OUTLETS = [
   { value: "mobifrip", label: "Mobifrip" },
 ] as const;
 
-type ListedItem = Doc<"klydeItems"> & { photoUrls: string[] };
+type ListedItem = Doc<"klydeItems"> & { photoUrls: string[]; thumbUrl?: string | null };
 type ShopItem = ListedItem;
 
 const initialForm: FormState = {
@@ -1137,7 +1137,7 @@ function Logo({ theme = "light" }: { theme?: "light" | "dark" }) {
 function ArticleThumb({ item }: { item: ListedItem }) {
   return (
     <img
-      src={item.photoUrls[0] ?? ""}
+      src={item.thumbUrl ?? item.photoUrls[0] ?? ""}
       alt=""
       loading="lazy"
       decoding="async"
@@ -2338,7 +2338,7 @@ function AppContent({
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--muted)]">
             {item.photoUrls[0] ? (
-              <img src={item.photoUrls[0]} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+              <img src={item.thumbUrl ?? item.photoUrls[0]} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
             ) : (
               <Package className="h-4 w-4 text-[var(--muted-foreground)]" />
             )}
@@ -2443,7 +2443,7 @@ function AppContent({
       ) : null}
       <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--muted)]">
         {item.photoUrls[0] ? (
-          <img src={item.photoUrls[0]} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          <img src={item.thumbUrl ?? item.photoUrls[0]} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         ) : (
           <Package className="h-5 w-5 text-[var(--muted-foreground)]" />
         )}
@@ -2481,7 +2481,7 @@ function AppContent({
       className="grid cursor-grab grid-cols-[56px_1fr] gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-2 active:cursor-grabbing"
     >
       <img
-        src={item.photoUrls[0] ?? ""}
+        src={item.thumbUrl ?? item.photoUrls[0] ?? ""}
         alt=""
         loading="lazy"
         decoding="async"
@@ -3221,7 +3221,7 @@ function AppContent({
 
             <div className="grid gap-4 p-4 md:grid-cols-[220px_1fr]">
               <img
-                src={detailItem.photoUrls[0] ?? ""}
+                src={detailItem.thumbUrl ?? detailItem.photoUrls[0] ?? ""}
                 alt=""
                 className="aspect-square w-full rounded-md bg-[var(--muted)] object-cover"
               />
@@ -4426,7 +4426,7 @@ function MenuLatest({
               <div className="aspect-[3/4] overflow-hidden bg-white">
                 {item.photoUrls[0] ? (
                   <img
-                    src={item.photoUrls[0]}
+                    src={item.thumbUrl ?? item.photoUrls[0]}
                     alt={item.title}
                     className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                   />
@@ -4838,7 +4838,8 @@ function ShopProductCard({
   const saved = wishlist.idSet.has(item._id);
   const [photoIndex, setPhotoIndex] = useState(0);
   const hasMultiplePhotos = item.photoUrls.length > 1;
-  const currentPhoto = item.photoUrls[photoIndex] ?? item.photoUrls[0];
+  // La miniature suffit à la carte ; les photos suivantes du carrousel restent pleine taille.
+  const currentPhoto = (photoIndex === 0 ? item.thumbUrl : null) ?? item.photoUrls[photoIndex] ?? item.photoUrls[0];
 
   function previousPhoto() {
     setPhotoIndex((index) => (index - 1 + item.photoUrls.length) % item.photoUrls.length);
@@ -5609,7 +5610,7 @@ function CartPage({ cart }: { cart: ReturnType<typeof useKlydeCart> }) {
             <div className="mt-8 grid gap-4">
               {availableArticles.map((item) => (
                 <article key={item._id} className="grid grid-cols-[96px_1fr_auto] gap-4 border-b border-[#1f1b18]/10 pb-4">
-                  <img src={item.photoUrls[0] ?? ""} alt="" loading="lazy" decoding="async" className="h-24 w-24 bg-white object-cover" />
+                  <img src={item.thumbUrl ?? item.photoUrls[0] ?? ""} alt="" loading="lazy" decoding="async" className="h-24 w-24 bg-white object-cover" />
                   <div className="min-w-0">
                     <h2 className="font-semibold">{item.title}</h2>
                     <p className="mt-1 text-sm text-[#1f1b18]/55">
