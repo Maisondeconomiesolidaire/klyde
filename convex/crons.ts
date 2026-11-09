@@ -3,6 +3,10 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
+// First run after the Paris month boundary, then hourly recovery of failures.
+crons.cron("facturation mensuelle DIB Bois", "5 * * * *", internal.bennesproMonthly.enqueue, {});
+crons.cron("reprise regroupements factures DIB Bois", "10 * * * *", internal.bennesproGrouping.recover, {});
+
 // Rappels contrôle technique / pollution des véhicules (J-30, J-15, J-5, J-1),
 // tous les jours à 05:00 UTC (06h/07h à Paris selon la saison).
 crons.daily(
@@ -68,6 +72,14 @@ crons.hourly(
   "import emails vinted klyd",
   { minuteUTC: 40 },
   internal.klydeGmail.syncAll,
+);
+
+// Miniatures de grille : on supprime celles dont la photo d'origine a disparu.
+crons.daily(
+  "nettoyage miniatures",
+  { hourUTC: 2, minuteUTC: 40 },
+  internal.thumbnails.cleanup,
+  {},
 );
 
 // Social mirrors are refreshed on demand from the sharing workspace.

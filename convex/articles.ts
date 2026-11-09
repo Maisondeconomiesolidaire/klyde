@@ -605,10 +605,13 @@ export const create = mutation({
      */
     qrReference: v.optional(v.string()),
     originalPrice: v.optional(v.number()),
+    /** Référence GDR, facultative. */
+    gdrReference: v.optional(v.string()),
     /** Recyclerie qui détient l'article (site de retrait pour le client). */
     site: v.optional(v.union(v.literal("60"), v.literal("76"))),
     category: v.string(),
     subcategory: v.optional(v.string()),
+    categoryPath: v.optional(v.array(v.string())),
     condition: v.string(),
     keywords: v.optional(v.array(v.string())),
     themeKey: v.optional(v.string()),
@@ -628,6 +631,8 @@ export const create = mutation({
       ...articleArgs,
       weightKg: normalizeWeightKg(args.weightKg),
       location: args.location?.trim() || undefined,
+      categoryPath: args.categoryPath?.map((part) => part.trim()).filter(Boolean),
+      gdrReference: args.gdrReference?.trim() || undefined,
       internalReference,
       keywords: args.keywords?.length ? uniqueKeywords(args.keywords) : undefined,
       themeKey: args.themeKey
@@ -709,6 +714,7 @@ export const applyAiListing = mutation({
     weightKg: v.optional(v.number()),
     category: v.string(),
     subcategory: v.optional(v.string()),
+    categoryPath: v.optional(v.array(v.string())),
     condition: v.string(),
     keywords: v.optional(v.array(v.string())),
     themeKey: v.optional(v.string()),
@@ -865,9 +871,12 @@ export const update = mutation({
     caisseId: v.optional(v.id("caisses")),
     originalPrice: v.optional(v.number()),
     internalReference: v.string(),
+    /** Référence GDR : absente = inchangée, chaîne vide = effacée. */
+    gdrReference: v.optional(v.string()),
     site: v.optional(v.union(v.literal("60"), v.literal("76"))),
     category: v.string(),
     subcategory: v.optional(v.string()),
+    categoryPath: v.optional(v.array(v.string())),
     condition: v.string(),
     keywords: v.optional(v.array(v.string())),
     themeKey: v.optional(v.string()),
@@ -880,17 +889,19 @@ export const update = mutation({
       v.literal("lot"),
     ),
   },
-  handler: async (ctx, { id, ...rest }) => {
+  handler: async (ctx, { id, gdrReference, ...rest }) => {
     await requireCrmPermission(ctx, "articles", "update");
     assertArticleReferences(rest);
     await ctx.db.patch(id, {
       ...rest,
+      ...(gdrReference !== undefined ? { gdrReference: gdrReference.trim() || undefined } : {}),
       weightKg: normalizeWeightKg(rest.weightKg),
       location: rest.location?.trim() || undefined,
       // Explicite : le formulaire pilote la caisse, y compris pour la vider
       // (`undefined` retire le champ, alors qu'un argument absent le garderait).
       caisseId: rest.caisseId ?? undefined,
       site: rest.site ?? undefined,
+      categoryPath: rest.categoryPath?.map((part) => part.trim()).filter(Boolean),
       keywords: rest.keywords?.length ? uniqueKeywords(rest.keywords) : undefined,
       themeKey: rest.themeKey
         ? normalizeKeyword(rest.themeKey).replace(/\s+/g, "-")

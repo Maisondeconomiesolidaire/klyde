@@ -177,6 +177,10 @@ export const bpBillingLine = v.object({
 
 /** App « Bennes & Pro » — facturation Stripe des matières payantes d'un dépôt. */
 export const bpBilling = v.object({
+  groupingId: v.optional(v.id("bpMonthlyInvoices")),
+  replacedStripeInvoiceIds: v.optional(v.array(v.string())),
+  month: v.optional(v.string()),
+  monthlyInvoiceId: v.optional(v.id("bpMonthlyInvoices")),
   /** Poids total facturable en kg (lignes kg + tonnes converties). */
   weightKg: v.number(),
   /** Prix appliqué, en centimes d'euro par kg (HT). */
@@ -205,6 +209,14 @@ export const bpBilling = v.object({
     ),
   ),
   paidAt: v.optional(v.number()),
+  /**
+   * Statut posé à la main que Stripe ne peut pas refléter (ex. facture payée
+   * remise « en attente ») : l'actualisation depuis Stripe ne l'écrase pas.
+   */
+  paymentStatusManual: v.optional(v.boolean()),
+  /** Dernier changement manuel du statut de règlement : qui et quand. */
+  paymentStatusUpdatedBy: v.optional(v.string()),
+  paymentStatusUpdatedAt: v.optional(v.number()),
   /** Horodatage de la dernière relance de règlement envoyée par email. */
   lastReminderAt: v.optional(v.number()),
   error: v.optional(v.string()),
@@ -265,17 +277,22 @@ export const btUnit = v.union(
 );
 
 export const btCondition = v.union(
+  /* Référentiel actuel : les cinq états de Leboncoin, mot pour mot, pour que
+   * l'extension Bâtire → Leboncoin les reporte sans traduction. */
+  v.literal("État neuf"),
+  v.literal("Très bon état"),
+  v.literal("Bon état"),
+  v.literal("État satisfaisant"),
+  v.literal("Pour pièces"),
+  /** @deprecated Anciens référentiels (quatre valeurs, puis la liste
+   *  d'origine). Conservés pour les fiches créées avant le changement :
+   *  retirer ces valeurs les rendrait invalides. */
   v.literal("Neuf"),
   v.literal("Très bon"),
   v.literal("Bon"),
   v.literal("Usagé"),
-  /** @deprecated Référentiel d'états d'avant la simplification en quatre
-   *  valeurs. Conservé pour les fiches créées avant le changement : retirer
-   *  ces valeurs les rendrait invalides. */
   v.literal("Déstockage"),
   v.literal("Reconditionné"),
-  v.literal("Très bon état"),
-  v.literal("Bon état"),
   v.literal("À reconditionner"),
   v.literal("À rénover"),
 );
@@ -504,6 +521,26 @@ const livraisonDetails = v.object({
 
 export default defineSchema(
   {
+  mlShuttles: defineTable({
+    name: v.string(), scheduledDate: v.string(), createdAt: v.number(),
+  }),
+  mlRequests: defineTable({
+    shuttleId: v.optional(v.id("mlShuttles")),
+    receivedQuantity: v.optional(v.number()),
+    receivedAt: v.optional(v.number()),
+    orderId: v.optional(v.id("btOrders")),
+    materialId: v.optional(v.id("btMaterials")),
+    reference: v.string(), title: v.string(), quantity: v.number(), unit: v.string(),
+    customerName: v.string(), origin: v.string(), destination: v.string(),
+    status: v.union(v.literal("a_preparer"), v.literal("en_transit"), v.literal("receptionnee"), v.literal("annulee")),
+    prepared: v.boolean(), scheduledDate: v.optional(v.string()), assignee: v.optional(v.string()),
+    notes: v.optional(v.string()), createdAt: v.number(), updatedAt: v.number(),
+    /** Échéance : date à laquelle le lot doit être arrivé à destination (YYYY-MM-DD). */
+    dueDate: v.optional(v.string()),
+  }).index("by_orderId", ["orderId"]).index("by_status", ["status"]).index("by_shuttleId", ["shuttleId"]),
+  mlEvents: defineTable({
+    requestId: v.id("mlRequests"), actor: v.string(), message: v.string(), createdAt: v.number(),
+  }).index("by_requestId", ["requestId"]),
   articles: defineTable({
     title: v.string(),
     description: v.string(),
@@ -516,6 +553,8 @@ export default defineSchema(
     caisseId: v.optional(v.id("caisses")),
     originalPrice: v.optional(v.number()),
     internalReference: v.optional(v.string()),
+    /** Référence GDR de l'article (logiciel de gestion), saisie à la main. */
+    gdrReference: v.optional(v.string()),
     /**
      * Recyclerie qui détient physiquement l'article : le client vient le
      * retirer sur ce site, et la boutique en ligne permet de filtrer dessus.
@@ -523,6 +562,8 @@ export default defineSchema(
     site: v.optional(v.union(v.literal("60"), v.literal("76"))),
     category: v.string(),
     subcategory: v.optional(v.string()),
+    /** Hiérarchie Label Emmaüs complète, de l'univers au niveau le plus précis. */
+    categoryPath: v.optional(v.array(v.string())),
     condition: v.string(),
     keywords: v.optional(v.array(v.string())),
     themeKey: v.optional(v.string()),
@@ -656,6 +697,14 @@ export default defineSchema(
     assignedTo: v.optional(v.id("teamMembers")),
     /** Équipe opérationnelle Recyclerie (remplace progressivement assignedTo). */
     assignedWorkerId: v.optional(v.id("polyvalentWorkers")),
+    /**
+     * Équipe complète mobilisée sur la demande, depuis le planning.
+     *
+     * Une collecte part rarement seule. `assignedWorkerId` reste renseigné avec
+     * le premier de la liste : les vues et l'index `by_assignedWorkerId` qui
+     * s'appuient dessus continuent de fonctionner sans rien changer.
+     */
+    assignedWorkerIds: v.optional(v.array(v.id("polyvalentWorkers"))),
     estimatedHours: v.optional(v.number()),
     actualHours: v.optional(v.number()),
     quoteAmount: v.optional(v.number()),
@@ -2525,6 +2574,37 @@ export default defineSchema(
   }).index("by_company", ["companyId"]),
 
   /** Dépôts de déchets. Les lignes de déchets sont embarquées dans le doc. */
+  bpMonthlyInvoices: defineTable({
+    receiptPartsSent: v.optional(v.array(v.number())),
+    receiptRecipient: v.optional(v.string()),
+    kind: v.optional(v.union(v.literal("monthly"), v.literal("manual"))),
+    details: v.optional(v.array(v.object({
+      depotId: v.id("bpDepots"),
+      description: v.string(),
+      amountCents: v.number(),
+      vatRate: v.number(),
+    }))),
+    sources: v.optional(v.array(v.object({
+      invoiceId: v.string(),
+      depotIds: v.array(v.id("bpDepots")),
+      amountCents: v.number(),
+      outcome: v.optional(v.union(v.literal("voided"), v.literal("excluded"))),
+      reason: v.optional(v.string()),
+    }))),
+    stripeInvoiceUrl: v.optional(v.string()),
+    companyId: v.id("bpCompanies"),
+    month: v.string(),
+    depotIds: v.array(v.id("bpDepots")),
+    lines: v.array(bpBillingLine),
+    status: v.union(v.literal("pending"), v.literal("sent"), v.literal("canceled")),
+    leaseUntil: v.number(),
+    stripeInvoiceId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    sentAt: v.optional(v.number()),
+  }).index("by_company_month", ["companyId", "month"])
+      .index("by_status", ["status"])
+      .index("by_company", ["companyId"]),
+
   bpDepots: defineTable({
     depotNumber: v.number(),
     companyId: v.id("bpCompanies"),
@@ -2559,7 +2639,9 @@ export default defineSchema(
   })
     .index("by_company", ["companyId"])
     .index("by_number", ["depotNumber"])
-    .index("by_profile", ["createdByProfileId"])
+      .index("by_monthly_pending", ["billing.status", "billing.month"])
+      .index("by_company_month", ["companyId", "billing.month"])
+      .index("by_profile", ["createdByProfileId"])
     .index("by_createdAt", ["createdAt"]),
 
   // ───────────────────────── App « Pointeuse LSDB » ─────────────────────────
@@ -2966,6 +3048,32 @@ export default defineSchema(
     .index("by_originalStartAt", ["originalStartAt"])
     .index("by_recurrenceId_and_originalStartAt", ["recurrenceId", "originalStartAt"]),
 
+  /**
+   * Indisponibilités RH d'un salarié : ce qui l'empêche d'être planifié.
+   *
+   * Elles vivent à côté des créneaux de tâches plutôt que dedans : une absence
+   * n'est pas un travail, elle ne compte dans aucune charge et ne réclame aucun
+   * effectif. Les horaires sont stockés comme ceux d'un créneau, pour qu'une
+   * demi-journée reste possible.
+   */
+  polyvalentAbsences: defineTable({
+    workerId: v.id("polyvalentWorkers"),
+    kind: v.union(
+      v.literal("conge"),
+      v.literal("absence"),
+      v.literal("formation"),
+      v.literal("pmsmp"),
+      v.literal("recup"),
+    ),
+    startAt: v.number(),
+    endAt: v.number(),
+    note: v.optional(v.string()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_startAt", ["startAt"])
+    .index("by_worker", ["workerId"]),
+
   polyvalentActivities: defineTable({
     taskId: v.id("polyvalentTasks"),
     /** Une tâche peut être planifiée avant qu'un salarié lui soit affecté. */
@@ -3142,6 +3250,7 @@ export default defineSchema(
         title: v.string(),
         quantity: v.number(),
         unit: btUnit,
+        outcome: v.optional(btRequestOutcome),
       }),
     ),
     message: v.optional(v.string()),
@@ -3158,10 +3267,18 @@ export default defineSchema(
   })
     .index("by_outcome", ["outcome"])
     .index("by_reference", ["reference"])
-    .index("by_createdAt", ["createdAt"]),
+    .index("by_createdAt", ["createdAt"])
+    .index("by_user_createdAt", ["userId", "createdAt"]),
 
   /** Ventes Bâtire : paiement en ligne (boutique) ou au terminal (kiosque). */
   btOrders: defineTable({
+    paymentMethod: v.optional(v.union(v.literal("card"), v.literal("cash"), v.literal("bank_transfer"))),
+    purchaseReference: v.optional(v.string()),
+    pickupReference: v.optional(v.string()),
+    readyAt: v.optional(v.number()),
+    collectedAt: v.optional(v.number()),
+    pickupHours: v.optional(v.string()),
+    logisticsSourceDepot: v.optional(v.string()),
     reference: v.string(),
     materialId: v.id("btMaterials"),
     materialTitle: v.string(),
@@ -3171,6 +3288,8 @@ export default defineSchema(
     unitPrice: v.number(),
     /** Montant total en centimes, tel qu'encaissé par Stripe. */
     amountCents: v.number(),
+    /** Transfert du lot vers un autre point de retrait (facturé une seule fois par panier). */
+    pickupFeeCents: v.optional(v.number()),
     customer: v.object({
       firstName: v.string(),
       lastName: v.string(),
@@ -3188,7 +3307,13 @@ export default defineSchema(
       ),
     ),
     channel: v.union(v.literal("boutique"), v.literal("terminal")),
-    status: v.union(v.literal("en_attente"), v.literal("payee"), v.literal("annulee")),
+    status: v.union(
+      v.literal("en_attente"),
+      v.literal("payee"),
+      v.literal("annulee"),
+      /** Réservée en ligne, réglée au retrait : pas de paiement Stripe. */
+      v.literal("reservee"),
+    ),
     stripeSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
     paidAt: v.optional(v.number()),
@@ -3198,7 +3323,8 @@ export default defineSchema(
     .index("by_status", ["status"])
     .index("by_reference", ["reference"])
     .index("by_material", ["materialId"])
-    .index("by_stripeSession", ["stripeSessionId"]),
+    .index("by_stripeSession", ["stripeSessionId"])
+    .index("by_user_createdAt", ["userId", "createdAt"]),
 
   /**
    * Messagerie Bâtire : un fil par client et par matériau.
@@ -3284,6 +3410,7 @@ export default defineSchema(
    * et alimentent le formulaire d'achat comme celui de don.
    */
   btDonorProfiles: defineTable({
+    customerType: v.optional(v.union(v.literal("particulier"), v.literal("professionnel"), v.literal("collectivite"))),
     clerkId: v.string(),
     /** Raison sociale. Une personne seule peut laisser le champ vide. */
     company: v.optional(v.string()),
@@ -3445,6 +3572,12 @@ export default defineSchema(
   })
     .index("by_projectId", ["projectId"])
     .index("by_taskId", ["taskId"]),
+
+  /** Miniature (~480 px) d'une photo du stockage, pour les grilles. Voir thumbnails.ts. */
+  storageThumbnails: defineTable({
+    source: v.id("_storage"),
+    thumb: v.id("_storage"),
+  }).index("by_source", ["source"]),
   },
   { schemaValidation: false },
 );
