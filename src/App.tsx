@@ -70,7 +70,7 @@ type KlydeStatus =
   | "gagne"
   | "magasin"
   | "archive";
-type AppTab = "stock" | "stock_b" | "prolonges" | "suivi" | "boutique" | "vinted" | "clients" | "rapports" | "archives";
+type AppTab = "stock" | "prolonges" | "suivi" | "boutique" | "vinted" | "clients" | "rapports" | "archives";
 
 type TrackingTab = "process" | "gagne";
 type DetailMode = "article" | "demande";
@@ -1279,10 +1279,8 @@ function AppContent({
   const endVacation = useMutation(api.klyde.endVacation);
   const setReturn = useMutation(api.klyde.setReturn);
   const clearReturn = useMutation(api.klyde.clearReturn);
-  const moveToStockB = useMutation(api.klyde.moveToStockB);
   const moveToShop = useMutation(api.klyde.moveToShop);
   const extendVintedListing = useMutation(api.klyde.extendVintedListing);
-  const setStockBDisposition = useMutation(api.klyde.setStockBDisposition);
   const removeItem = useMutation(api.klyde.remove);
   const setFeatured = useMutation(api.klyde.setFeatured);
   const setBoutiquePublished = useMutation(api.klyde.setBoutiquePublished);
@@ -1393,9 +1391,10 @@ function AppContent({
     [archivedItems, matchesFilters],
   );
   const tabItems = useMemo(() => {
-    if (activeTab === "stock") return visibleItems.filter((item) => itemStatus(item) !== "stock_b" && !item.vintedExtensionCount);
-    if (activeTab === "stock_b") return visibleItems.filter((item) => itemStatus(item) === "stock_b");
-    if (activeTab === "prolonges") return visibleItems.filter((item) => (item.vintedExtensionCount ?? 0) > 0 && itemStatus(item) !== "stock_b");
+    // Un article prolongé reste dans le Stock : il apparaît aussi dans
+    // « Articles prolongés », sans quitter le parcours de vente classique.
+    if (activeTab === "stock") return visibleItems;
+    if (activeTab === "prolonges") return visibleItems.filter((item) => (item.vintedExtensionCount ?? 0) > 0);
     if (activeTab === "archives") return visibleArchives;
     return visibleItems;
   }, [activeTab, visibleItems, visibleArchives]);
@@ -2156,7 +2155,7 @@ function AppContent({
 
   const actionButtons = (item: ListedItem) => (
     <div className="grid gap-2">
-      {activeTab === "stock" ? (
+      {activeTab === "stock" || activeTab === "prolonges" ? (
         itemStatus(item) === "stock" || itemStatus(item) === "archive" ? (
           canPublish ? (
             <button
@@ -2182,16 +2181,6 @@ function AppContent({
             Remettre en stock
           </button>
         ) : null
-      ) : null}
-      {activeTab === "stock_b" && canUpdate ? (
-        <>
-          <button type="button" onClick={(event) => { event.stopPropagation(); void setStockBDisposition({ id: item._id, disposition: "vente_exceptionnelle" }); }} className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--primary)] text-sm font-medium text-[var(--primary)]">
-            Vente exceptionnelle
-          </button>
-          <button type="button" onClick={(event) => { event.stopPropagation(); void setStockBDisposition({ id: item._id, disposition: "magasin" }); }} className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border)] text-sm font-medium">
-            Mettre en magasin
-          </button>
-        </>
       ) : null}
       {activeTab === "archives" ? (
         canUpdate ? (
@@ -2308,7 +2297,7 @@ function AppContent({
         {actionButtons(item)}
         {vintedNeedsDecision(item) && canUpdate ? (
           <div className="grid grid-cols-2 gap-2 border-t border-amber-200 pt-2">
-            <button type="button" onClick={(event) => { event.stopPropagation(); void moveToStockB({ id: item._id }); }} className="rounded-md border border-amber-300 px-2 py-1.5 text-xs font-semibold text-amber-800">Sortir du stock</button>
+            <button type="button" onClick={(event) => { event.stopPropagation(); void moveItem(item._id, "stock"); }} className="rounded-md border border-amber-300 px-2 py-1.5 text-xs font-semibold text-amber-800">Retirer de Vinted</button>
             <button type="button" onClick={(event) => { event.stopPropagation(); void extendVintedListing({ id: item._id }); }} className="rounded-md bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white">Prolonger en ligne</button>
           </div>
         ) : null}
@@ -2561,7 +2550,6 @@ function AppContent({
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-4">
           {navButton("stock", <Package className="h-4 w-4" />, "Stock")}
-          {navButton("stock_b", <Package className="h-4 w-4" />, "Stock B")}
           {navButton("prolonges", <ArrowRight className="h-4 w-4" />, "Articles prolongés")}
           {navButton("suivi", <Kanban className="h-4 w-4" />, "Suivi")}
           {navButton("boutique", <ShoppingBag className="h-4 w-4" />, "Boutique")}
@@ -2606,7 +2594,7 @@ function AppContent({
             <Logo theme={theme} />
           </div>
           <h1 className="hidden text-lg font-semibold md:block">
-            {activeTab === "stock" ? "Stock" : activeTab === "stock_b" ? "Stock B" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "clients" ? "Clients" : activeTab === "rapports" ? "Rapports" : activeTab === "archives" ? "Archives" : "Suivi"}
+            {activeTab === "stock" ? "Stock" : activeTab === "prolonges" ? "Articles prolongés" : activeTab === "boutique" ? "Boutique" : activeTab === "vinted" ? "Emails Vinted" : activeTab === "clients" ? "Clients" : activeTab === "rapports" ? "Rapports" : activeTab === "archives" ? "Archives" : "Suivi"}
           </h1>
           <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {canUpdate && activeTab === "stock" ? (
@@ -2682,7 +2670,6 @@ function AppContent({
           {([
             ["stock", "Stock", true],
             ["suivi", "Suivi", true],
-            ["stock_b", "Stock B", true],
             ["prolonges", "Prolongés", true],
             ["boutique", "Boutique", true],
             ["vinted", "Emails Vinted", canReadVinted],
@@ -2970,14 +2957,6 @@ function AppContent({
                                     </button>
                                   ))}
                                   <div className="my-1 border-t border-[var(--border)]" />
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => void runBulkAction("stock-b", "Déplacer vers le Stock B", selectedItems, (item) => moveToStockB({ id: item._id }))}
-                                    className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)]"
-                                  >
-                                    Déplacer vers le Stock B
-                                  </button>
                                   <button
                                     type="button"
                                     role="menuitem"
@@ -3944,7 +3923,7 @@ function AppContent({
               {canUpdate && sheetItem && vintedNeedsDecision(sheetItem) ? (
                 <div className="grid gap-2 rounded-3xl border border-amber-200 bg-amber-50 p-5 sm:grid-cols-2">
                   <p className="sm:col-span-2 text-sm font-semibold text-amber-900">Cette annonce Vinted est en ligne depuis plus de 3 semaines.</p>
-                  <button type="button" onClick={() => void moveToStockB({ id: sheetItem._id })} className="h-10 rounded-md border border-amber-300 text-sm font-semibold text-amber-900">Sortir du stock</button>
+                  <button type="button" onClick={() => void moveItem(sheetItem._id, "stock")} className="h-10 rounded-md border border-amber-300 text-sm font-semibold text-amber-900">Retirer de Vinted</button>
                   <button type="button" onClick={() => void extendVintedListing({ id: sheetItem._id })} className="h-10 rounded-md bg-amber-500 text-sm font-semibold text-white">Prolonger en ligne</button>
                 </div>
               ) : null}
