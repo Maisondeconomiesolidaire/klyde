@@ -238,6 +238,16 @@ export function VintedMailbox({
                   {account.lastSyncError ? (
                     <p className="mt-1 text-xs text-red-600">{account.lastSyncError}</p>
                   ) : null}
+                  {canManage && account.lastSyncError && /Accès Gmail non accordé|insufficient/i.test(account.lastSyncError) ? (
+                    <button
+                      type="button"
+                      onClick={handleConnect}
+                      disabled={busy === "connect"}
+                      className="mt-2 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      Reconnecter {account.email}
+                    </button>
+                  ) : null}
                 </div>
                 {canManage ? (
                   <button
